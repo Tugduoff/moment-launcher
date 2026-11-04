@@ -11,7 +11,8 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter
 HERE = Path(__file__).parent
 RAW = HERE / "raw"
 OUT = HERE.parent / "app/src/main/res/drawable-nodpi"
-NAMES = ["asleep", "awake", "talking", "thinking", "glasses", "seatbelt", "headphones", "sleepy"]
+NAMES = ["asleep", "awake", "talking", "thinking", "glasses", "seatbelt", "headphones", "sleepy",
+         "body", "body_glasses", "body_headphones", "body_seatbelt"]
 SIZE = 360
 
 
@@ -54,7 +55,7 @@ def main():
     sheet = Image.new("RGBA", (SIZE * len(cutouts), SIZE * 2), (247, 244, 238, 255))
     for i, (n, im) in enumerate(cutouts.items()):
         final = im.crop(crop).resize((SIZE, SIZE), Image.LANCZOS)
-        final.save(OUT / f"mascot_{n}.png", optimize=True)
+        final.save(OUT / (f"{n}.png" if n.startswith("body") else f"mascot_{n}.png"), optimize=True)
         sheet.alpha_composite(final, (i * SIZE, 0))
         dark = Image.new("RGBA", (SIZE, SIZE), (18, 19, 23, 255))
         dark.alpha_composite(final)

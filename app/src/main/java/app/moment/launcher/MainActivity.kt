@@ -32,6 +32,36 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        handleDemo(intent)
+    }
+
+    /**
+     * Scriptable demo controls (debug aid for recording the video), e.g.
+     * adb shell am start -n app.moment.launcher/.MainActivity --es demo "reset;seed;clock:2026-10-27-11-58;place:JOURDAN"
+     */
+    private fun handleDemo(intent: android.content.Intent?) {
+        val script = intent?.getStringExtra("demo") ?: return
+        script.split(";").map { it.trim() }.forEach { cmd ->
+            val arg = cmd.substringAfter(":", "")
+            when (cmd.substringBefore(":")) {
+                "reset" -> vm.resetAll()
+                "seed" -> vm.seedVisits()
+                "live" -> vm.liveClock()
+                "clock" -> arg.split("-").map { it.toInt() }.let { (y, mo, d, h, mi) -> vm.setClock(y, mo - 1, d, h, mi) }
+                "place" -> vm.setDemo { it.copy(place = app.moment.launcher.data.Place.valueOf(arg)) }
+                "car" -> vm.setDemo { it.copy(carBluetooth = arg == "1") }
+                "hp" -> vm.setDemo { it.copy(headphones = arg == "1") }
+                "rain" -> vm.setDemo { it.copy(raining = arg == "1") }
+                "tap" -> vm.tapCompanion()
+                "ask" -> vm.ask(arg)
+                "accept" -> vm.acceptProposal()
+                "dismiss" -> vm.dismissProposal()
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         vm.refreshApps()

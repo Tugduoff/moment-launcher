@@ -108,6 +108,8 @@ object ContextEngine {
         val similar = visits.filter { it.place == s.place.label && it.weekday == s.weekday && kotlin.math.abs(it.hour - hour) <= 1 }
         if (similar.size < 3) return null
         val day = if (s.weekday) "weekdays" else "weekends"
-        return "${similar.size} visits to '${s.place.label}' on $day around ${hour}:00 (${similar.size} of the last ${visits.count { it.place == s.place.label }} visits there)"
+        val usual = Math.round(similar.map { it.hour }.average()).toInt()
+        val whenText = if (usual == 12) "noon" else "$usual:00"
+        return "The user comes to '${s.place.label}' on most $day around $whenText (seen ${similar.size} times)."
     }
 }

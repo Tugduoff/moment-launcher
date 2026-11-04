@@ -50,8 +50,9 @@ object MuseJobs {
     )
 
     private val proposalSchema = obj(
-        "intent" to enum(listOf("context", "answer"), "context if the user describes a situation or rule; answer for a plain question"),
-        "answer" to str("If intent=answer: one short sentence. Else empty."),
+        "intent" to enum(listOf("context", "open_app", "answer"), "context if the user describes a situation, place, routine or rule; open_app if they just want to open one app; answer for a plain question"),
+        "answer" to str("If intent=answer: one short sentence. If open_app: a 2-4 word reply like 'Opening YouTube'. Else empty."),
+        "app" to str("If intent=open_app: exact installed app name. Else empty."),
         "question" to str("What the companion asks to confirm, e.g. \"You come here most weekdays at noon. Make it 'Uni restaurant'?\""),
         "explanation" to str("One line: what accepting will do, e.g. 'Adds Izly and directions to 17 bd Jourdan on weekdays around noon.'"),
         "context" to contextSchema,
@@ -64,7 +65,7 @@ Rules:
 - Only use apps from the installed list when kind is app or music; use the exact name from the list. If the user names an app that is not installed, still use its name.
 - Prefer actions over apps when they save a step: navigate to a saved place, call someone, share location, book a ride, pay.
 - Keep labels short (max 4 words). Details are 2-5 words.
-- Hide only apps that distract from the moment (social, video, games) and only when it makes sense (study, work, driving).
+- Hide apps only for focus moments (study, work, driving, sleep) or when the user asks. For meals, leisure, travel and night out, "hide" must be empty.
 - You never see coordinates or history, only labels. Be concise and warm, never cute-overload."""
 
     /** A pattern the rules noticed ("3 visits here around noon on weekdays") becomes a drafted context. */
@@ -77,7 +78,7 @@ Now: $timeText
 Installed apps: ${installedApps.joinToString(", ")}
 Draft a context for this place and time. The user is a student in Paris; the CROUS student card app 'Izly' is how they pay at the uni restaurant (use kind app, target Izly).
 Include directions to the address as a navigate item if relevant.
-The question must mention the pattern and propose the context name."""
+The question must mention the pattern in plain words and propose the context name, in this style: "You come here most weekdays at noon. Make it 'Uni restaurant'?". The explanation says what accepting adds, in this style: "Adds Izly and directions to 17 bd Jourdan on weekdays around noon.""""
         val o = MuseClient.json(SYSTEM, user, "proposal", proposalSchema)
         return o.toProposal("pattern")
     }
@@ -88,7 +89,7 @@ The question must mention the pattern and propose the context name."""
 Current place label: $placeLabel
 Now: $timeText
 Installed apps: ${installedApps.joinToString(", ")}
-If this describes a situation, rule or preference, draft the context. If it is a plain question, set intent=answer and still fill context with your best guess of a related context."""
+If this describes a situation, rule or preference, draft the context. If they only want to open an app, set intent=open_app. If it is a plain question, set intent=answer. Always fill context anyway (it is ignored unless intent=context)."""
         val o = MuseClient.json(SYSTEM, user, "proposal", proposalSchema)
         return o.toProposal("sentence")
     }
@@ -116,9 +117,9 @@ If this describes a situation, rule or preference, draft the context. If it is a
         val ctx = MomentContext.fromJson(getJSONObject("context"), id = "ctx_" + System.currentTimeMillis())
         return Proposal(
             context = ctx,
-            question = if (optString("intent") == "answer") optString("answer") else optString("question"),
-            explanation = optString("explanation"),
-            source = if (optString("intent") == "answer") "answer" else source,
+            question = if (optString("intent") == "context") optString("question") else optString("answer"),
+            explanation = if (optString("intent") == "open_app") optString("app") else optString("explanation"),
+            source = when (optString("intent")) { "answer" -> "answer"; "open_app" -> "open_app"; else -> source },
         )
     }
 }

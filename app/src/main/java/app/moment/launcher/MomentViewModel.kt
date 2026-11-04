@@ -57,6 +57,8 @@ data class UiState(
     val demoOpen: Boolean = false,
     val apps: List<InstalledApp> = emptyList(),
     val museStatus: String = "",
+    val hop: Int = 0,
+    val speak: Int = 0,
 )
 
 class MomentViewModel(app: Application) : AndroidViewModel(app) {
@@ -152,7 +154,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     /** The companion speaks only on the home screen, briefly, then goes quiet. */
     private fun say(text: String, ms: Long = 4_000) {
         greetingJob?.cancel()
-        _ui.update { it.copy(bubble = text, bubbleIsIdea = false) }
+        _ui.update { it.copy(bubble = text, bubbleIsIdea = false, speak = it.speak + 1) }
         greetingJob = viewModelScope.launch {
             delay(ms)
             _ui.update { if (it.bubble == text) it.copy(bubble = null) else it }
@@ -163,6 +165,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     // ---- Companion ---------------------------------------------------------------------------
 
     fun tapCompanion() {
+        _ui.update { it.copy(hop = it.hop + 1) }
         val st = _ui.value
         when {
             st.thinking || st.proposal != null -> Unit
@@ -207,7 +210,11 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             val result = runCatching { job() }
             _ui.update { it.copy(thinking = false, museStatus = "Muse Spark · ${MuseClient.lastLatencyMs} ms") }
             result.onSuccess { p ->
-                if (p.source == "answer") { _ui.update { it.copy(proposal = null) }; say(p.question, 8_000) }
+                if (p.source == "open_app") {
+                    _ui.update { it.copy(proposal = null) }
+                    say(p.question.ifBlank { "Opening ${p.explanation}" }, 3_000)
+                    phone.openApp(p.explanation, _ui.value.apps)
+                } else if (p.source == "answer") { _ui.update { it.copy(proposal = null) }; say(p.question, 8_000) }
                 else _ui.update { it.copy(proposal = p, editing = false) }
             }.onFailure { e ->
                 Log.e("Moment", "Muse failed", e)

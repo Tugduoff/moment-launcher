@@ -41,3 +41,12 @@ gen headphones "Add over-ear headphones on the head: the band over the top behin
 gen sleepy "Change only the face: eyes closed as happy upward curves, content cozy smile, and a tiny light blue raindrop sitting on the leaf." &
 wait
 echo "All expressions in art/raw. Run art/process.py to cut them out for the app."
+
+# ---- Rig bodies: no face. The app draws and animates the face live on top. ----
+NOFACE="Remove the eyes and the mouth completely so the face is blank smooth skin, keep the pink blush cheeks exactly where they are."
+gen body "$NOFACE" &
+gen body_glasses "$NOFACE Add thin round dark brown glasses frames where the eyes were, with empty clear lenses." &
+gen body_headphones "$NOFACE Add over-ear headphones on the head: the band over the top behind the leaf, one pink ear cup on the left side and one cyan ear cup on the right side." &
+gen body_seatbelt "$NOFACE Add a dark grey car seatbelt strap going diagonally across the body from the top left to the bottom right with a small silver buckle." &
+wait
+echo "Rig bodies done."

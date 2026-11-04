@@ -185,7 +185,7 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
             // Companion row.
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.clickable(remember { MutableInteractionSource() }, null) { vm.tapCompanion() }) {
-                    Companion(ui.mood, 96.dp)
+                    Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop)
                 }
                 Spacer(Modifier.width(4.dp))
                 AnimatedContent(
@@ -441,7 +441,7 @@ private fun RainOverlay() {
     }
     val beads = remember { val r = Random(11); List(9) { Triple(r.nextFloat(), r.nextFloat(), 5f + r.nextFloat() * 7f) } }
     Canvas(Modifier.fillMaxSize()) {
-        drawCircle(Brush.radialGradient(listOf(Color(0x59FFFFFF), Color.Transparent), Offset(size.width * .46f, size.height * .28f), size.width * .6f))
+        run { val c = Offset(size.width * .46f, size.height * .28f); val r = size.width * .7f; drawCircle(Brush.radialGradient(listOf(Color(0x40FFFFFF), Color.Transparent), c, r), r, c) }
         val a = Math.toRadians(12.0)
         drops.forEach { (pos, alpha) ->
             val (fx, fy, h) = pos
