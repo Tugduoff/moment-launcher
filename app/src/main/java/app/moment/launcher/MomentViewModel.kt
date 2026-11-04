@@ -63,6 +63,10 @@ data class UiState(
     val outfit: androidx.compose.ui.graphics.ImageBitmap? = null,
     val dressing: Boolean = false,
     val speak: Int = 0,
+    val showWardrobe: Boolean = false,
+    val showContexts: Boolean = false,
+    val wardrobe: List<String> = emptyList(),
+    val contexts: List<MomentContext> = emptyList(),
 )
 
 private const val WARDROBE = "wardrobe"
@@ -136,6 +140,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
                 time = "%02d:%02d".format(c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE)),
                 date = SimpleDateFormat("EEEE d MMMM", Locale.ENGLISH).format(c.time),
                 signals = s, context = ctx, items = items, hiddenApps = hidden, pattern = pattern, outfit = outfit,
+                wardrobe = store.wardrobe(), contexts = user,
             )
         }
         updateMood()
@@ -209,6 +214,11 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     fun ask(sentence: String) {
         val st = _ui.value; val s = st.signals ?: return
         if (sentence.isBlank()) return
+        val key = sentence.trim().lowercase().trimEnd('.', '?', '!')
+        if (key in setOf("contexts", "my contexts", "wardrobe", "my wardrobe")) {
+            _ui.update { it.copy(query = "", results = emptyList(), showContexts = "contexts" in key, showWardrobe = "wardrobe" in key) }
+            return
+        }
         _ui.update { it.copy(query = "", results = emptyList()) }
         runMuse { MuseJobs.fromSentence(sentence, s.place.label, timeText(s), st.apps.map { it.label }) }
     }
@@ -307,6 +317,45 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
                 updateMood()
                 say("That didn't fit this time. Try again?")
             }
+    }
+
+    fun openWardrobe(open: Boolean) = _ui.update { it.copy(showWardrobe = open, showContexts = false) }
+    fun openContexts(open: Boolean) = _ui.update { it.copy(showContexts = open, showWardrobe = false) }
+    fun outfitFor(contextId: String) = outfitImage(contextId)
+
+    /**
+     * Takes one accessory off: Muse Image re-dresses the plain body with what is left, and only a
+     * successful result replaces the current look (a failed call changes nothing).
+     */
+    fun removeAccessory(item: String) {
+        val rest = store.wardrobe().toMutableList().also { it.remove(item) }
+        if (rest.isEmpty()) { undress(); return }
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            _ui.update { it.copy(dressing = true) }
+            updateMood()
+            say("Taking off ${item.removePrefix("a ")}. One sec.", 60_000)
+            val tmp = "wardrobe_new"
+            runCatching {
+                var base: android.graphics.Bitmap? = null
+                for (a in rest) base = runCatching { Outfits.generate(app, tmp, a, base) }.getOrElse { Outfits.generate(app, tmp, a, base) }
+                base!!
+            }.onSuccess {
+                app.filesDir.listFiles { f -> f.name.startsWith("outfit_") && f.name != Outfits.file(app, tmp).name }?.forEach { it.delete() }
+                Outfits.file(app, tmp).renameTo(Outfits.file(app, WARDROBE))
+                outfitCache.clear(); store.clearWardrobe(); rest.forEach { store.addToWardrobe(it) }
+                showOffUntil = System.currentTimeMillis() + 6_000
+                _ui.update { it.copy(dressing = false, hop = it.hop + 1) }
+                recompute()
+                say("Better?", 4_000)
+            }.onFailure { e ->
+                Log.e("Moment", "remove accessory failed", e)
+                Outfits.file(app, tmp).delete()
+                _ui.update { it.copy(dressing = false) }
+                updateMood()
+                say("Couldn't change that. Try again?")
+            }
+        }
     }
 
     fun undress() {

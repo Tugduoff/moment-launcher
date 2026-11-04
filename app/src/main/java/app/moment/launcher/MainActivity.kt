@@ -9,8 +9,10 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.moment.launcher.ui.ContextsSheet
 import app.moment.launcher.ui.DemoPanel
 import app.moment.launcher.ui.HomeScreen
+import app.moment.launcher.ui.WardrobeSheet
 import app.moment.launcher.ui.palette
 
 class MainActivity : ComponentActivity() {
@@ -29,6 +31,8 @@ class MainActivity : ComponentActivity() {
             }
             HomeScreen(vm, ui)
             DemoPanel(vm, ui)
+            WardrobeSheet(vm, ui)
+            ContextsSheet(vm, ui)
         }
     }
 

@@ -184,7 +184,7 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
 
             // Companion row.
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.clickable(remember { MutableInteractionSource() }, null) { vm.tapCompanion() }) {
+                Box(Modifier.combinedClickable(remember { MutableInteractionSource() }, null, onLongClick = { vm.openWardrobe(true) }) { vm.tapCompanion() }) {
                     Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, outfit = ui.outfit)
                 }
                 Spacer(Modifier.width(4.dp))
