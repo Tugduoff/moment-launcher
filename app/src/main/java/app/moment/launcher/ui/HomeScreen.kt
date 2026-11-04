@@ -45,6 +45,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -135,9 +138,15 @@ private fun isAction(item: NowItem) =
 fun HomeScreen(vm: MomentViewModel, ui: UiState) {
     val ctx = ui.context ?: return
     val p = palette(ctx.look)
+    // A launcher never closes on Back: this lowest-priority handler swallows it.
+    BackHandler(enabled = true) { }
     val focus = LocalFocusManager.current
-    BackHandler(enabled = ui.query.isNotEmpty() || ui.proposal != null || ui.plan != null) {
-        if (ui.query.isNotEmpty()) { vm.setQuery(""); focus.clearFocus() } else if (ui.plan != null) vm.dismissPlan() else vm.dismissProposal()
+    var focused by remember { androidx.compose.runtime.mutableStateOf(false) }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    fun buzz() = haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+    val searching = focused || ui.query.isNotBlank()
+    BackHandler(enabled = searching || ui.proposal != null || ui.plan != null) {
+        if (searching) { vm.setQuery(""); focus.clearFocus() } else if (ui.plan != null) vm.dismissPlan() else vm.dismissProposal()
     }
 
     val swipeMin = with(androidx.compose.ui.platform.LocalDensity.current) { 72.dp.toPx() }
@@ -150,7 +159,7 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
         ) { change, d -> dx += d; change.consume() }
     }.pointerInput(Unit) {
         // Long-press on empty space: change the background (paint again, your photo, remove).
-        detectTapGestures(onLongPress = { vm.openBackdropMenu(true) })
+        detectTapGestures(onLongPress = { buzz(); vm.openBackdropMenu(true) })
     }) {
         ui.backdrop?.let { bg ->
             androidx.compose.foundation.Image(bg, null, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
@@ -171,77 +180,84 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
         Column(
             Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(horizontal = 28.dp).padding(bottom = 20.dp)
         ) {
-            // Figma: the clock's text box starts 86 dp from the top of the screen, whatever the status bar height.
-            val statusTop = androidx.compose.foundation.layout.WindowInsets.statusBars
-                .asPaddingValues().calculateTopPadding()
-            Spacer(Modifier.height((86.dp - statusTop).coerceAtLeast(12.dp)))
-            // Clock: long-press opens the hidden demo panel.
-            Column(Modifier.combinedClickable(
-                interactionSource = remember { MutableInteractionSource() }, indication = null,
-                onClick = {}, onLongClick = { vm.openDemo(true) },
-            )) {
-                Text(ui.time, 88, p.text, weight = 300, letterSpacing = -2.64, lineHeight = 96)
-                Spacer(Modifier.height(2.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text(ui.date, 17, p.text2)
-                    StatusGlyphs(ui, p)
-                }
-            }
-            Spacer(Modifier.weight(1f))
-
-            // The Now block swaps between: search results, a proposal card, or this moment's items.
-            AnimatedContent(
-                targetState = when {
-                    ui.query.isNotBlank() -> "search"
-                    ui.plan != null -> "plan"
-                    ui.proposal != null -> "proposal"
-                    else -> "now:" + ctx.id
-                },
-                transitionSpec = { (fadeIn(tween(220)) + slideInVertically(tween(260)) { it / 8 }).togetherWith(fadeOut(tween(120))) },
-                label = "now",
-            ) { key ->
-                when {
-                    key == "search" -> SearchResults(vm, ui, p)
-                    key == "proposal" -> ProposalCard(vm, ui, p)
-                    key == "plan" -> PlanCard(vm, ui, p)
-                    ctx.bigButtons -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        ui.items.forEach { BigTile(it, p, onLong = { vm.editRow(it) }) { vm.runItem(it) } }
-                    }
-                    else -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        ui.items.forEach { item ->
-                            if (isAction(item)) ActionCard(item, p, onLong = { vm.editRow(item) }) { vm.runItem(item) }
-                            else AppRow(item, p, onLong = { vm.editRow(item) }) { vm.runItem(item) }
-                        }
-                        if (ui.hiddenApps.isNotEmpty() && !ui.focusUnlocked) {
-                            Spacer(Modifier.height(4.dp)); HiddenRow(ui, p) { vm.openAnyway() }
-                        }
+            if (!searching) {
+                // Figma: the clock's text box starts 86 dp from the top of the screen, whatever the status bar height.
+                val statusTop = androidx.compose.foundation.layout.WindowInsets.statusBars
+                    .asPaddingValues().calculateTopPadding()
+                Spacer(Modifier.height((86.dp - statusTop).coerceAtLeast(12.dp)))
+                // Clock: long-press opens the hidden demo panel.
+                Column(Modifier.combinedClickable(
+                    interactionSource = remember { MutableInteractionSource() }, indication = null,
+                    onClick = {}, onLongClick = { vm.openDemo(true) },
+                )) {
+                    Text(ui.time, 88, p.text, weight = 300, letterSpacing = -2.64, lineHeight = 96)
+                    Spacer(Modifier.height(2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text(ui.date, 17, p.text2)
+                        StatusGlyphs(ui, p)
                     }
                 }
             }
-            Spacer(Modifier.height(if (ctx.bigButtons) 20.dp else 16.dp))
-
-            // Companion row.
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.combinedClickable(remember { MutableInteractionSource() }, null, onLongClick = { vm.openWardrobe(true) }) { vm.tapCompanion() }, contentAlignment = Alignment.Center) {
-                    if (ui.listening) ListeningRings(ui.voiceLevel, p.text)
-                    Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, outfit = ui.outfit)
+            if (searching) {
+                // Searching: results take the whole top of the screen; clock and companion step aside.
+                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = 16.dp)) {
+                    SearchResults(vm, ui, p)
                 }
-                Spacer(Modifier.width(4.dp))
+            } else {
+                Spacer(Modifier.weight(1f))
+                // The Now block swaps between: search results, a proposal card, or this moment's items.
                 AnimatedContent(
-                    targetState = ui.bubble ?: if (ctx.hideSearch) "#caption" else "",
-                    transitionSpec = { (fadeIn() + slideInHorizontally { -it / 6 }).togetherWith(fadeOut()) },
-                    label = "bubble",
-                ) { b ->
-                    when (b) {
-                        "" -> Spacer(Modifier.width(1.dp))
-                        "#caption" -> Spacer(Modifier.width(1.dp))
-                        else -> Bubble(b, p, dot = ui.bubbleIsIdea) { vm.tapCompanion() }
+                    targetState = when {
+                        ui.query.isNotBlank() -> "search"
+                        ui.plan != null -> "plan"
+                        ui.proposal != null -> "proposal"
+                        else -> "now:" + ctx.id
+                    },
+                    transitionSpec = { (fadeIn(tween(220)) + slideInVertically(tween(260)) { it / 8 }).togetherWith(fadeOut(tween(120))) },
+                    label = "now",
+                ) { key ->
+                    when {
+                        key == "search" -> SearchResults(vm, ui, p)
+                        key == "proposal" -> ProposalCard(vm, ui, p)
+                        key == "plan" -> PlanCard(vm, ui, p)
+                        ctx.bigButtons -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            ui.items.forEach { BigTile(it, p, onLong = { buzz(); vm.editRow(it) }) { vm.runItem(it) } }
+                        }
+                        else -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            ui.items.forEach { item ->
+                                if (isAction(item)) ActionCard(item, p, onLong = { buzz(); vm.editRow(item) }) { vm.runItem(item) }
+                                else AppRow(item, p, onLong = { buzz(); vm.editRow(item) }) { vm.runItem(item) }
+                            }
+                            if (ui.hiddenApps.isNotEmpty() && !ui.focusUnlocked) {
+                                Spacer(Modifier.height(4.dp)); HiddenRow(ui, p) { vm.openAnyway() }
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(if (ctx.bigButtons) 20.dp else 16.dp))
+                // Companion row.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.combinedClickable(remember { MutableInteractionSource() }, null, onLongClick = { vm.openWardrobe(true) }) { vm.tapCompanion() }, contentAlignment = Alignment.Center) {
+                        if (ui.listening) ListeningRings(ui.voiceLevel, p.text)
+                        Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, outfit = ui.outfit)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    AnimatedContent(
+                        targetState = ui.bubble ?: if (ctx.hideSearch) "#caption" else "",
+                        transitionSpec = { (fadeIn() + slideInHorizontally { -it / 6 }).togetherWith(fadeOut()) },
+                        label = "bubble",
+                    ) { b ->
+                        when (b) {
+                            "" -> Spacer(Modifier.width(1.dp))
+                            "#caption" -> Spacer(Modifier.width(1.dp))
+                            else -> Bubble(b, p, dot = ui.bubbleIsIdea) { vm.tapCompanion() }
+                        }
                     }
                 }
             }
             if (!ctx.hideSearch) {
                 Spacer(Modifier.height(12.dp))
-                SearchBar(vm, ui, p, onFocus = { })
+                SearchBar(vm, ui, p, onFocus = { focused = it })
             }
         }
     }
@@ -484,11 +500,14 @@ private fun SearchResults(vm: MomentViewModel, ui: UiState, p: Palette) {
         ).filter { it.first.startsWith(q, ignoreCase = true) }.forEach { (label, detail, open) ->
             ActionCard(NowItem(label, detail, "moment"), p, onClick = open)
         }
-        ui.results.forEach { app ->
-            Row(Modifier.fillMaxWidth().height(44.dp).clickable { vm.launch(app) }, verticalAlignment = Alignment.CenterVertically) {
+        val hidden = if (ui.focusUnlocked) emptySet() else ui.hiddenApps.map { it.lowercase() }.toSet()
+        val list = if (q.isEmpty()) ui.apps.filter { it.label.lowercase() !in hidden }.sortedBy { it.label.lowercase() } else ui.results
+        list.forEach { app ->
+            Row(Modifier.fillMaxWidth().height(48.dp).clickable { vm.launch(app) }, verticalAlignment = Alignment.CenterVertically) {
                 Text(app.label, 24, p.text, maxLines = 1)
             }
         }
+        if (q.isEmpty()) return@Column
         val shape = RoundedCornerShape(22.dp)
         Row(
             Modifier.fillMaxWidth().background(p.pill, shape).border(1.dp, p.stroke, shape)

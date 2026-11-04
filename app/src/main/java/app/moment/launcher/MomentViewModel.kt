@@ -139,17 +139,18 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     private val backdropCache = mutableMapOf<String, androidx.compose.ui.graphics.ImageBitmap?>()
     private var painting = false
     private var lowBatteryWarned = false
+    private var lastLoc: Pair<Long, android.location.Location?> = 0L to null
 
     init {
         real.start(); body.start()
-        viewModelScope.launch { body.steps.collect { recompute() } }
-        viewModelScope.launch { real.devices.collect { d -> _ui.update { it.copy(realCar = d.carName) }; recompute() } }
-        viewModelScope.launch { while (true) { refreshWeather(); delay(30 * 60_000L) } }
-        refreshApps()
-        viewModelScope.launch {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { body.steps.collect { recompute() } }
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { real.devices.collect { d -> _ui.update { it.copy(realCar = d.carName) }; recompute() } }
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { while (true) { refreshWeather(); delay(30 * 60_000L) } }
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { refreshApps() }
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
             while (true) { recompute(); delay(5_000) }
         }
-        classifyAppsIfNeeded()
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { classifyAppsIfNeeded() }
         _ui.update { it.copy(museStatus = if (MuseClient.hasKey) "Muse Spark ready" else "No API key in this build") }
     }
 
@@ -771,7 +772,6 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         say("Home, saved.", 3_000); refreshSenses(); recompute()
     }
 
-    private var lastLoc: Pair<Long, android.location.Location?> = 0L to null
     private fun approx(): android.location.Location? {
         if (System.currentTimeMillis() - lastLoc.first > 60_000) lastLoc = System.currentTimeMillis() to senses.approxLocation()
         return lastLoc.second
@@ -820,6 +820,13 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         val row = NowItem(app.label, "", "app", app.label)
         val i = list.indexOfFirst { it.label == item?.label }
         if (i >= 0) list[i] = row else if (list.size < 4) list += row
+    }
+
+    fun addRow(app: InstalledApp) = editItems { if (it.size < 4 && it.none { r -> r.label == app.label }) it += NowItem(app.label, "", "app", app.label) }
+
+    fun moveUp(item: NowItem) = editItems { list ->
+        val i = list.indexOfFirst { it.label == item.label }
+        if (i > 0) { val r = list.removeAt(i); list.add(i - 1, r) }
     }
 
     fun resetRows() { _ui.value.context?.let { store.setItems(it.id, it.items) }; _ui.update { it.copy(rowEdit = null) }; recompute() }
