@@ -19,6 +19,8 @@ Powered by **Muse Spark**, **Muse Image** and **Muse Voice Transcribe** through 
 <img src="docs/screens/08-rain.png" width="150"/>
 <img src="docs/screens/09-night.png" width="150"/>
 <img src="docs/screens/10-wardrobe.png" width="150"/>
+<img src="docs/screens/wardrobe-sheet.png" width="150"/>
+<img src="docs/screens/contexts-sheet.png" width="150"/>
 </p>
 
 ## The problem
@@ -40,14 +42,22 @@ The home screen holds four things: a clock, a companion, at most four rows for *
 
 **The companion is the only face of the AI.** It sleeps most of the time. When it notices a pattern ("you come here most weekdays at noon") it wakes up and proposes a context on a card you **Accept**, **Edit** or **Dismiss**. Nothing on your home screen changes without your OK, and two dismissals in a row make it go quiet.
 
-**Talk to it** by typing or holding the mic: *"At the library, hide social apps and show Notion"* becomes a pre-filled context card. *"Open YouTube"* opens YouTube. *"Put on a cowboy hat"* … it puts on a cowboy hat.
+**Talk to it** by typing or holding the mic. It's an **agent**: *"I go to the gym on Tuesday and Thursday evenings, and I play guitar"* makes it check the time, your contexts and your apps, remember that you play guitar, and stage two contexts (Gym · Tue, Thu · 17–21h, YouTube hidden; Guitar time · headphones) on **one card you approve**. *"Open YouTube"* opens YouTube. *"Put on a cowboy hat"* … it puts on a cowboy hat.
+
+**Real signals:** headphones and car Bluetooth come from Android's audio devices. **Live weather** comes from Muse Spark with web search: when it really rains in Paris, Moment goes into rain mode on its own and shows "Light rain, 5°C" next to the date.
+
+**Wardrobe & postcards:** long-press the companion to open its wardrobe (what it wears, try-on suggestions, "Dress me up…"). **Share** asks Muse Image to paint a postcard of your companion, dressed as it is, in a scene for the current moment, ready to post.
+
+**Contexts list:** type "contexts" to see every context with its trigger and the outfit the companion wears there.
 
 ## How Meta's models are used
 
 | Model | Where | What it does |
 |---|---|---|
+| **Muse Spark agent** (tool calling) | `ai/Agent.kt` | Real OpenAI-style tool calling, up to 6 turns, parallel calls: `get_now`, `list_contexts`, `list_apps`, `propose_context`, `delete_context`, `open_app`, `wear`, `undress`, `remember`, `share_postcard`. Read-only and harmless tools run immediately; changes to the home screen are **staged** into one plan card. Remembered facts feed the next conversations. |
+| **Muse Spark + web_search** | `ai/Weather.kt` | Search grounding through the Responses API with a JSON schema: rain now / rain in 3 h / temperature / summary. Only the city name is sent. |
 | **Muse Spark** `muse-spark-1.3` | `ai/MuseJobs.kt` | One JSON-schema-constrained call per interaction (structured output, `reasoning_effort: minimal`, ~3–6 s). It turns a detected pattern or any sentence into one of five intents: a **context** (name, chip, trigger, ≤4 apps/actions, apps to hide, companion mood, palette, greeting, outfit), **open_app**, **dress**, **undress** or **answer**. It also sorts installed apps once (distracting, transport, payment…) so Focus knows what to hide. |
-| **Muse Image** `muse-image-1.0` | `art/generate_companion.sh`, `ai/Outfits.kt` | Generated the companion, its 8 expressions and four **faceless rig bodies** (plain, glasses, headphones, seatbelt) by *editing* one base image, so the character stays identical. **At runtime**, accepting a context or asking "play the guitar" sends the current body to `/images/edits`; the result is cut out on the phone (green-screen key + de-spill) and **stacks**: hat, then guitar, then sunglasses. |
+| **Muse Image** `muse-image-1.0` | `art/generate_companion.sh`, `ai/Outfits.kt` | Generated the companion, its 8 expressions and four **faceless rig bodies** (plain, glasses, headphones, seatbelt) by *editing* one base image, so the character stays identical. **At runtime**, accepting a context or asking "play the guitar" sends the current body to `/images/edits`; the result is cut out on the phone (green-screen key + de-spill) and **stacks**: hat, then guitar, then sunglasses. **Postcards** (`ai/Postcard.kt`): the dressed companion, given a face, painted into a scene for the current moment. |
 | **Muse Voice Transcribe** `muse-voice-transcribe-1.0` | `ai/Voice.kt` | Push-to-talk on the mic button: 16 kHz WAV to `/asr/transcribe` in `PUSH_TO_TALK` mode, with the user's **installed app names as vocabulary keywords** and English + French language bias. |
 
 ### The living companion (rig)
