@@ -12,6 +12,10 @@ data class Signals(
     val carBluetooth: Boolean = false,
     val headphones: Boolean = false,
     val raining: Boolean = false,
+    /** Steps since midnight (hardware step counter), null when unknown. */
+    val steps: Int? = null,
+    val battery: Int? = null,
+    val charging: Boolean = false,
 )
 
 /** Places are labels, never coordinates: only the label ever reaches the model. */

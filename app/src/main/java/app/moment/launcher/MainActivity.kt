@@ -21,6 +21,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Steps come from the phone's own step counter; it needs the activity permission (asked once).
+        val activity = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ok -> if (ok) vm.body.start() }
+        if (android.os.Build.VERSION.SDK_INT >= 29 &&
+            checkSelfPermission(android.Manifest.permission.ACTIVITY_RECOGNITION) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) activity.launch(android.Manifest.permission.ACTIVITY_RECOGNITION)
         setContent {
             val ui by vm.ui.collectAsStateWithLifecycle()
             val dark = ui.context?.let { palette(it.look).dark } ?: false
@@ -73,6 +78,8 @@ class MainActivity : ComponentActivity() {
                 "weather" -> vm.refreshWeather()
                 "timetable" -> app.moment.launcher.ai.Timetable.startFromFile(vm, arg)
                 "wardrobe" -> vm.openWardrobe(arg == "1")
+                "steps" -> vm.setDemo { it.copy(steps = arg.toIntOrNull()) }
+                "battery" -> vm.setDemo { it.copy(battery = arg.toIntOrNull()) }
                 "contexts" -> vm.openContexts(arg == "1")
             }
         }

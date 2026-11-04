@@ -95,6 +95,8 @@ fun DemoPanel(vm: MomentViewModel, ui: UiState) {
             }
             Text("Signals", 14, ink2)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton({ vm.setDemo { it.copy(steps = 5_120) } }) { Text("Walk: 5,120 steps (real: ${vm.body.steps.value ?: "no sensor"})", 13, ink) }
+                OutlinedButton({ vm.setDemo { it.copy(battery = 12) } }) { Text("Battery 12%", 13, ink) }
                 OutlinedButton({ vm.refreshWeather() }) { Text("Live weather: ${ui.weather?.summary ?: "fetch"}", 13, ink) }
                 if (ui.pinnedId != null) OutlinedButton({ vm.backToAutomatic() }) { Text("Back to automatic (now ${ui.context?.name})", 13, ink) }
             }

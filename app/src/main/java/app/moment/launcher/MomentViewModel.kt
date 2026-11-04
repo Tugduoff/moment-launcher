@@ -25,6 +25,7 @@ import app.moment.launcher.data.Trigger
 import app.moment.launcher.system.InstalledApp
 import app.moment.launcher.system.Phone
 import app.moment.launcher.system.RealSignals
+import app.moment.launcher.system.Body
 import app.moment.launcher.ai.Weather
 import app.moment.launcher.ai.WeatherNow
 import app.moment.launcher.ai.Postcard
@@ -47,6 +48,9 @@ data class DemoState(
     val raining: Boolean = false,
     /** True once the demo panel or hook changed anything: real weather then stays out of the way. */
     val touched: Boolean = false,
+    /** Demo overrides for the body signals. */
+    val steps: Int? = null,
+    val battery: Int? = null,
 )
 
 data class UiState(
@@ -107,9 +111,11 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     private val outfitCache = mutableMapOf<String, androidx.compose.ui.graphics.ImageBitmap?>()
 
     private val real = RealSignals(app)
+    val body = Body(app)
 
     init {
-        real.start()
+        real.start(); body.start()
+        viewModelScope.launch { body.steps.collect { recompute() } }
         viewModelScope.launch { real.devices.collect { d -> _ui.update { it.copy(realCar = d.carName) }; recompute() } }
         viewModelScope.launch { while (true) { refreshWeather(); delay(30 * 60_000L) } }
         refreshApps()
@@ -139,6 +145,9 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             headphones = d.headphones || real.devices.value.headphones,
             // Real weather only counts on the live clock: a faked demo time keeps its own sky.
             raining = d.raining || (_ui.value.weather?.rainingNow == true && d.clockOffsetMs == 0L && !d.touched),
+            steps = d.steps ?: body.steps.value,
+            battery = d.battery ?: body.battery()?.percent,
+            charging = d.battery == null && body.battery()?.charging == true,
         )
     }
 
@@ -164,6 +173,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             .takeIf { dismissStreak < 2 }
 
         val outfit = (if (ctx.builtIn) null else outfitImage(ctx.id)) ?: outfitImage(WARDROBE)
+        bodyMoments(s)
         val changed = ctx.id != lastContextId
         if (changed) {
             lastContextId = ctx.id
@@ -174,7 +184,8 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(
                 time = "%02d:%02d".format(c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE)),
                 date = SimpleDateFormat("EEEE d MMMM", Locale.ENGLISH).format(c.time) +
-                    (_ui.value.weather?.takeIf { _ui.value.demo.clockOffsetMs == 0L }?.let { " · ${it.summary}" } ?: ""),
+                    (_ui.value.weather?.takeIf { _ui.value.demo.clockOffsetMs == 0L }?.let { " · ${it.summary}" } ?: "") +
+                    (s.steps?.takeIf { it > 0 }?.let { " · " + "%,d".format(Locale.ENGLISH, it) + " steps" } ?: ""),
                 signals = s, context = ctx, items = items, hiddenApps = hidden, pattern = pattern, outfit = outfit,
                 wardrobe = store.wardrobe(), contexts = user,
             )
@@ -273,6 +284,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             return org.json.JSONObject().put("time", st.time).put("day", s?.dayLabel).put("weekday", s?.weekday)
                 .put("place", s?.place?.label).put("car_bluetooth", s?.carBluetooth).put("headphones", s?.headphones)
                 .put("raining", s?.raining).put("active_context", st.context?.name)
+                .put("steps_today", s?.steps).put("battery_percent", s?.battery).put("charging", s?.charging)
                 .put("wearing", org.json.JSONArray(store.wardrobe()))
                 .put("weather", st.weather?.summary ?: "unknown").put("rain_soon", st.weather?.rainSoon)
         }
@@ -650,6 +662,27 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
 
     private val uiPrefs = app.getSharedPreferences("moment_ui", android.content.Context.MODE_PRIVATE)
     init { if (!uiPrefs.getBoolean("onboarded", false)) _ui.update { it.copy(showOnboarding = true) } }
+
+    // ---- Body: steps and battery ---------------------------------------------------------------
+
+    private var lowBatteryWarned = false
+
+    /** The companion notices step milestones and a low battery, once each. */
+    private fun bodyMoments(s: Signals) {
+        val day = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now().time)
+        val steps = s.steps ?: 0
+        val reached = listOf(10_000, 5_000).firstOrNull { steps >= it }
+        if (reached != null && uiPrefs.getInt("milestone_$day", 0) < reached) {
+            uiPrefs.edit().putInt("milestone_$day", reached).apply()
+            _ui.update { it.copy(hop = it.hop + 1) }
+            say(if (reached >= 10_000) "10,000 steps today. Legend." else "5,000 steps already. Nice walk.", 6_000)
+        }
+        val b = s.battery
+        if (b != null && b <= 15 && !s.charging && !lowBatteryWarned) {
+            lowBatteryWarned = true
+            say("Battery at $b%. Maybe plug me in soon?", 6_000)
+        } else if (b != null && (b > 20 || s.charging)) lowBatteryWarned = false
+    }
 
     fun replayOnboarding() = _ui.update { it.copy(showOnboarding = true, demoOpen = false) }
     fun backToAutomatic() { _ui.update { it.copy(pinnedId = null) }; recompute(); say("Back to automatic.", 3_000) }

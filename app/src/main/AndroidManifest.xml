@@ -3,6 +3,7 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
     <!-- A launcher lists the apps the user can open. -->
     <queries>
