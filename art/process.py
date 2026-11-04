@@ -23,6 +23,19 @@ def cut(path: Path) -> Image.Image:
     filled = img.copy()
     for corner in [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1), (w // 2, 2), (2, h // 2)]:
         ImageDraw.floodfill(filled, corner, (255, 0, 255), thresh=40)
+    # Enclosed white gaps (e.g. between the headphone band and the head) are not connected to the
+    # edges: fill every large near-white pocket too. Small ones (eye highlights) are kept.
+    px = filled.load()
+    for y in range(0, h, 6):
+        for x in range(0, w, 6):
+            r, g, b = px[x, y]
+            if min(r, g, b) > 238 and max(r, g, b) - min(r, g, b) < 12:
+                probe = filled.copy()
+                ImageDraw.floodfill(probe, (x, y), (0, 255, 255), thresh=40)
+                diff = ImageChops.difference(probe, filled).convert("L").point(lambda v: 255 if v else 0)
+                bb = diff.getbbox()
+                if bb and (bb[2] - bb[0]) * (bb[3] - bb[1]) > 2500:
+                    ImageDraw.floodfill(filled, (x, y), (255, 0, 255), thresh=40)
     bg = Image.eval(ImageChops.difference(filled, Image.new("RGB", (w, h), (255, 0, 255))).convert("L"),
                     lambda v: 255 if v < 8 else 0)
     # Soft edge: fade the 3 px ring around the shape by how white each pixel is.

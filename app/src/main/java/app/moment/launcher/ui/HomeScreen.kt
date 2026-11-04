@@ -36,6 +36,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -112,6 +114,7 @@ private fun iconFor(item: NowItem) = when {
     item.kind == "ride" -> Icons.CAR
     item.kind == "music" -> Icons.MUSIC
     item.kind == "web" -> Icons.GLOBE
+    item.kind == "moment" -> Icons.SPARKLE
     else -> Icons.CARD
 }
 
@@ -142,7 +145,10 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
         Column(
             Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(horizontal = 28.dp).padding(bottom = 20.dp)
         ) {
-            Spacer(Modifier.height(40.dp))
+            // Figma: the clock's text box starts 86 dp from the top of the screen, whatever the status bar height.
+            val statusTop = androidx.compose.foundation.layout.WindowInsets.statusBars
+                .asPaddingValues().calculateTopPadding()
+            Spacer(Modifier.height((86.dp - statusTop).coerceAtLeast(12.dp)))
             // Clock: long-press opens the hidden demo panel.
             Column(Modifier.combinedClickable(
                 interactionSource = remember { MutableInteractionSource() }, indication = null,
@@ -406,6 +412,14 @@ private fun Button(label: String, style: Btn, p: Palette, onClick: () -> Unit) {
 private fun SearchResults(vm: MomentViewModel, ui: UiState, p: Palette) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         TimetableSearchRow(vm, ui.query, p)
+        // Moment's own screens are searchable too.
+        val q = ui.query.trim()
+        if (q.length >= 2) listOf(
+            Triple("Wardrobe", "What your companion wears", { vm.setQuery(""); vm.openWardrobe(true) }),
+            Triple("Contexts", "Every moment Moment knows", { vm.setQuery(""); vm.openContexts(true) }),
+        ).filter { it.first.startsWith(q, ignoreCase = true) }.forEach { (label, detail, open) ->
+            ActionCard(NowItem(label, detail, "moment"), p, open)
+        }
         ui.results.forEach { app ->
             Row(Modifier.fillMaxWidth().height(44.dp).clickable { vm.launch(app) }, verticalAlignment = Alignment.CenterVertically) {
                 Text(app.label, 24, p.text, maxLines = 1)

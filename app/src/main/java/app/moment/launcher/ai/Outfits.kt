@@ -69,6 +69,9 @@ object Outfits {
             if (x > 0) q.add(i - 1); if (x < w - 1) q.add(i + 1)
             if (y > 0) q.add(i - w); if (y < h - 1) q.add(i + w)
         }
+        // Enclosed gaps (between a headband and the head, a guitar neck and the body) are not reached by
+        // the flood fill: clear any pixel that is unmistakably key green as well.
+        for (i in px.indices) if (!bg[i] && key(px[i]) >= 150) bg[i] = true
         for (i in px.indices) {
             if (bg[i]) { px[i] = Color.TRANSPARENT; continue }
             val x = i % w; val y = i / w
