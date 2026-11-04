@@ -80,6 +80,25 @@ fun DemoPanel(vm: MomentViewModel, ui: UiState) {
             Toggle("Headphones connected", ui.demo.headphones) { v -> vm.setDemo { it.copy(headphones = v) } }
             Toggle("Raining", ui.demo.raining) { v -> vm.setDemo { it.copy(raining = v) } }
 
+            Text("Try the new features (closes this panel)", 14, ink2)
+            fun go(f: () -> Unit) { vm.openDemo(false); f() }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton({ go { vm.ask("I go to the gym on Tuesday and Thursday evenings, and I play guitar") } }) { Text("Agent: gym + guitar", 13, ink) }
+                OutlinedButton({ go { app.moment.launcher.ai.Timetable.startFromAsset(vm) } }) { Text("Read sample timetable", 13, ink) }
+                OutlinedButton({ go { vm.ask("Put on a red cowboy hat") } }) { Text("Wear a cowboy hat", 13, ink) }
+                OutlinedButton({ go { vm.ask("Now play the guitar") } }) { Text("Play the guitar", 13, ink) }
+                OutlinedButton({ go { vm.undress() } }) { Text("Undress", 13, ink) }
+                OutlinedButton({ go { vm.sharePostcard() } }) { Text("Postcard + share", 13, ink) }
+                OutlinedButton({ go { vm.openWardrobe(true) } }) { Text("Wardrobe", 13, ink) }
+                OutlinedButton({ go { vm.openContexts(true) } }) { Text("Contexts", 13, ink) }
+                OutlinedButton({ go { vm.replayOnboarding() } }) { Text("Replay onboarding", 13, ink) }
+            }
+            Text("Signals", 14, ink2)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton({ vm.refreshWeather() }) { Text("Live weather: ${ui.weather?.summary ?: "fetch"}", 13, ink) }
+                if (ui.pinnedId != null) OutlinedButton({ vm.backToAutomatic() }) { Text("Back to automatic (now ${ui.context?.name})", 13, ink) }
+            }
+
             Text("Data", 14, ink2)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton({ vm.seedVisits() }) { Text("Seed 3 lunches at 17 bd Jourdan", 13, ink) }

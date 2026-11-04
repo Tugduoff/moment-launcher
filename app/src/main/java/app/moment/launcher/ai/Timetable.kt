@@ -235,6 +235,15 @@ object Timetable {
     }
 
     /** Demo hook: run the flow on an image file on the device. */
+    /** The sample timetable bundled with the app (demo panel): works on any phone, nothing to push. */
+    fun startFromAsset(vm: MomentViewModel) {
+        vm.viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) { vm.getApplication<android.app.Application>().assets.open("timetable_sample.png").use { it.readBytes() } } }
+                .onSuccess { start(vm, it) }
+                .onFailure { Log.e("Moment", "timetable sample", it); _state.value = State.Failed("I can't open the sample.") }
+        }
+    }
+
     fun startFromFile(vm: MomentViewModel, path: String) {
         vm.viewModelScope.launch {
             // Scoped storage blocks /sdcard/Download for adb-pushed files: fall back to the app's own

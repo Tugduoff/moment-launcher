@@ -651,6 +651,9 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     private val uiPrefs = app.getSharedPreferences("moment_ui", android.content.Context.MODE_PRIVATE)
     init { if (!uiPrefs.getBoolean("onboarded", false)) _ui.update { it.copy(showOnboarding = true) } }
 
+    fun replayOnboarding() = _ui.update { it.copy(showOnboarding = true, demoOpen = false) }
+    fun backToAutomatic() { _ui.update { it.copy(pinnedId = null) }; recompute(); say("Back to automatic.", 3_000) }
+
     fun finishOnboarding() {
         uiPrefs.edit().putBoolean("onboarded", true).apply()
         _ui.update { it.copy(showOnboarding = false) }
