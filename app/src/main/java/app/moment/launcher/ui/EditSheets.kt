@@ -19,6 +19,7 @@ import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -261,18 +262,53 @@ fun StyleSheet(vm: MomentViewModel, ui: UiState) {
     ModalBottomSheet(onDismissRequest = { vm.openStyle(false) }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SHEET) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp).padding(bottom = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Style", 28, p.text, weight = 500)
-            Text(ui.time.ifBlank { "12:34" }, Style.SIZES[st.clockSize].second / 2 + 20, p.text, weight = Style.WEIGHTS[st.clockWeight].second)
-            Text("Font", 13, p.text2)
+            Text(ui.time.ifBlank { "12:34" }, Style.SIZES[st.clockSize].second / 2 + 20, p.text, weight = Style.WEIGHTS[st.clockWeight].second, font = Style.clockFamily(st))
+            Text("Effect", 13, p.text2)
+            EffectCarousel(st.effect) { vm.setStyle(st.copy(effect = it)) }
+            Text("Clock font", 13, p.text2)
+            ChoiceRow(Style.CLOCK_FONTS, st.clockFont, p, fontOf = { if (it == 0) Style.family(st.font) else Style.family(it - 1) }) { vm.setStyle(st.copy(clockFont = it)) }
+            Text("App font", 13, p.text2)
             ChoiceRow(Style.FONTS, st.font, p, fontOf = { Style.family(it) }) { vm.setStyle(st.copy(font = it)) }
             Text("Clock weight", 13, p.text2)
             ChoiceRow(Style.WEIGHTS.map { it.first }, st.clockWeight, p) { vm.setStyle(st.copy(clockWeight = it)) }
             Text("Clock size", 13, p.text2)
             ChoiceRow(Style.SIZES.map { it.first }, st.clockSize, p) { vm.setStyle(st.copy(clockSize = it)) }
-            Text("Effect", 13, p.text2)
-            ChoiceRow(Effects.NAMES, st.effect, p) { vm.setStyle(st.copy(effect = it)) }
             Text("Auto follows the context (rain, stars, glow). The sparkle by the clock pauses any effect.", 12, p.text2)
             Text("Time format", 13, p.text2)
             ChoiceRow(listOf("24 h", "12 h"), if (st.h12) 1 else 0, p) { vm.setStyle(st.copy(h12 = it == 1)) }
+        }
+    }
+}
+
+/** Effects as a swipeable row of live previews; the chosen one is ringed and centred. */
+@Composable
+private fun EffectCarousel(selected: Int, onPick: (Int) -> Unit) {
+    val state = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = (selected - 1).coerceAtLeast(0))
+    androidx.compose.foundation.lazy.LazyRow(
+        state = state, horizontalArrangement = Arrangement.spacedBy(10.dp),
+        flingBehavior = androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior(state),
+        modifier = Modifier.fillMaxWidth().height(184.dp),
+    ) {
+        items(Effects.NAMES.size) { i ->
+            val on = i == selected
+            val shape = RoundedCornerShape(20.dp)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    Modifier.size(104.dp, 150.dp).clip(shape)
+                        .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFF1C2546), Color(0xFF3A2A5C))))
+                        .border(if (on) 3.dp else 1.dp, if (on) Color(0xFF2A2622) else Color(0x22000000), shape)
+                        .clickable { onPick(i) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    when (i) {
+                        0 -> Text("Follows\nthe context", 12, Color.White.copy(alpha = .8f))
+                        1 -> Text("Calm", 13, Color.White.copy(alpha = .6f))
+                        else -> EffectLayer(i)
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(Effects.NAMES[i], 13, Color(0xFF2A2622), weight = if (on) 500 else 400, maxLines = 1)
+            }
         }
     }
 }

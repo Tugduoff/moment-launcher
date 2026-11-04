@@ -198,7 +198,7 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                 )) {
                     Style.current.let { st ->
                         val size = Style.SIZES[st.clockSize].second
-                        Text(ui.time, size, p.text, weight = Style.WEIGHTS[st.clockWeight].second, letterSpacing = -size * 0.03, lineHeight = (size * 1.09).toInt())
+                        Text(ui.time, size, p.text, weight = Style.WEIGHTS[st.clockWeight].second, letterSpacing = -size * 0.03, lineHeight = (size * 1.09).toInt(), font = Style.clockFamily(st))
                     }
                     Spacer(Modifier.height(2.dp))
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -363,10 +363,11 @@ private fun StatusGlyphs(ui: UiState, p: Palette) {
 fun Text(
     text: String, size: Int, color: Color, modifier: Modifier = Modifier, weight: Int = 400,
     letterSpacing: Double = 0.0, lineHeight: Int? = null, maxLines: Int = Int.MAX_VALUE, underline: Boolean = false,
+    font: androidx.compose.ui.text.font.FontFamily? = null,
 ) = androidx.compose.foundation.text.BasicText(
     text, modifier,
     style = TextStyle(
-        fontFamily = DmSans, fontWeight = FontWeight(weight), fontSize = size.sp, color = color,
+        fontFamily = font ?: DmSans, fontWeight = FontWeight(weight), fontSize = size.sp, color = color,
         letterSpacing = letterSpacing.sp, lineHeight = lineHeight?.sp ?: androidx.compose.ui.unit.TextUnit.Unspecified,
         textDecoration = if (underline) TextDecoration.Underline else null,
     ),
