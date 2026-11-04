@@ -29,6 +29,8 @@ import app.moment.launcher.system.Body
 import app.moment.launcher.ai.Weather
 import app.moment.launcher.ai.WeatherNow
 import app.moment.launcher.ai.Postcard
+import app.moment.launcher.ai.Backdrops
+import app.moment.launcher.data.Look
 import app.moment.launcher.data.cleanAccessory
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -87,6 +89,8 @@ data class UiState(
     val showWardrobe: Boolean = false,
     val showContexts: Boolean = false,
     val showOnboarding: Boolean = false,
+    /** The companion-painted background of the current context, if any. */
+    val backdrop: androidx.compose.ui.graphics.ImageBitmap? = null,
     /** A context the user picked by hand in the Contexts list; it wins until [pinnedUntil]. */
     val pinnedId: String? = null,
     val pinnedUntil: Long = 0,
@@ -112,6 +116,11 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
 
     private val real = RealSignals(app)
     val body = Body(app)
+    // Declared before init: recompute() already runs from the init block below.
+    private val uiPrefs = app.getSharedPreferences("moment_ui", android.content.Context.MODE_PRIVATE)
+    private val backdropCache = mutableMapOf<String, androidx.compose.ui.graphics.ImageBitmap?>()
+    private var painting = false
+    private var lowBatteryWarned = false
 
     init {
         real.start(); body.start()
@@ -174,6 +183,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
 
         val outfit = (if (ctx.builtIn) null else outfitImage(ctx.id)) ?: outfitImage(WARDROBE)
         bodyMoments(s)
+        val backdrop = backdropFor(ctx)
         val changed = ctx.id != lastContextId
         if (changed) {
             lastContextId = ctx.id
@@ -186,7 +196,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
                 date = SimpleDateFormat("EEEE d MMMM", Locale.ENGLISH).format(c.time) +
                     (_ui.value.weather?.takeIf { _ui.value.demo.clockOffsetMs == 0L }?.let { " · ${it.summary}" } ?: "") +
                     (s.steps?.takeIf { it > 0 }?.let { " · " + "%,d".format(Locale.ENGLISH, it) + " steps" } ?: ""),
-                signals = s, context = ctx, items = items, hiddenApps = hidden, pattern = pattern, outfit = outfit,
+                signals = s, context = ctx, items = items, hiddenApps = hidden, pattern = pattern, outfit = outfit, backdrop = backdrop,
                 wardrobe = store.wardrobe(), contexts = user,
             )
         }
@@ -304,6 +314,10 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         override fun wear(accessory: String): String { this@MomentViewModel.wear(accessory, "Trying on $accessory…"); return "putting it on now (takes ~15 s)" }
         override fun undress(): String { viewModelScope.launch { this@MomentViewModel.undress() }; return "done" }
         override fun share(): String { sharePostcard(); return "painting a postcard and opening the share sheet" }
+        override fun paintBackground(description: String): String {
+            val c = _ui.value.context ?: return "no context"
+            paintBackdrop(c, description); return "painting it now (takes ~15 s)"
+        }
         override fun progress(text: String) { viewModelScope.launch { say("$text…", 30_000) } }
     }
 
@@ -660,12 +674,52 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- First run --------------------------------------------------------------------------
 
-    private val uiPrefs = app.getSharedPreferences("moment_ui", android.content.Context.MODE_PRIVATE)
     init { if (!uiPrefs.getBoolean("onboarded", false)) _ui.update { it.copy(showOnboarding = true) } }
+
+    // ---- Backgrounds the companion paints ------------------------------------------------------
+
+
+    /** Calm looks only: rain, night, game and driving keep their own animated backgrounds. */
+    private fun backdropOk(c: MomentContext) = c.look == Look.CREAM || c.look == Look.STUDY
+
+    private fun backdropFor(c: MomentContext): androidx.compose.ui.graphics.ImageBitmap? {
+        if (!backdropOk(c)) return null
+        val img = backdropCache.getOrPut(c.id) { Backdrops.load(getApplication(), c.id)?.asImageBitmap() }
+        // Proactive: the first time one of your contexts (or home) is on screen, it paints one, once.
+        if (img == null && !painting && MuseClient.hasKey && !_ui.value.showOnboarding && (!c.builtIn || c.id == "home") &&
+            !uiPrefs.getBoolean("painted_${c.id}", false)
+        ) {
+            uiPrefs.edit().putBoolean("painted_${c.id}", true).apply()
+            viewModelScope.launch { delay(4_000); if (_ui.value.context?.id == c.id) paintBackdrop(c, null) }
+        }
+        return img
+    }
+
+    fun paintBackdrop(c: MomentContext, wish: String?) {
+        if (painting) return
+        painting = true
+        viewModelScope.launch {
+            val subject = wish?.takeIf { it.isNotBlank() } ?: when (c.id) {
+                "home" -> "a cozy morning corner of a Paris apartment, a plant on the window sill"
+                else -> "${c.name.lowercase()}${if (c.chip.isNotBlank()) " (" + c.chip.lowercase() + ")" else ""}, in Paris"
+            }
+            say(if (wish == null) "I'm painting you a background for ${c.name}…" else "Painting it…", 30_000)
+            runCatching { Backdrops.paint(getApplication(), c.id, subject) }
+                .onSuccess { bmp ->
+                    backdropCache[c.id] = bmp.asImageBitmap()
+                    _ui.update { it.copy(hop = it.hop + 1) }
+                    say("There. A background for ${c.name}.", 5_000)
+                    recompute()
+                }
+                .onFailure { Log.e("Moment", "backdrop", it); say("My brushes slipped. Try again later?", 4_000) }
+            painting = false
+        }
+    }
+
+    fun clearBackdrops() { Backdrops.clear(getApplication()); backdropCache.clear(); recompute() }
 
     // ---- Body: steps and battery ---------------------------------------------------------------
 
-    private var lowBatteryWarned = false
 
     /** The companion notices step milestones and a low battery, once each. */
     private fun bodyMoments(s: Signals) {

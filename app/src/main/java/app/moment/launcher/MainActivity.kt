@@ -78,6 +78,8 @@ class MainActivity : ComponentActivity() {
                 "weather" -> vm.refreshWeather()
                 "timetable" -> app.moment.launcher.ai.Timetable.startFromFile(vm, arg)
                 "wardrobe" -> vm.openWardrobe(arg == "1")
+                "use" -> vm.useContext(arg)
+                "paint" -> vm.ui.value.context?.let { vm.paintBackdrop(it, arg.ifBlank { null }) }
                 "steps" -> vm.setDemo { it.copy(steps = arg.toIntOrNull()) }
                 "battery" -> vm.setDemo { it.copy(battery = arg.toIntOrNull()) }
                 "contexts" -> vm.openContexts(arg == "1")

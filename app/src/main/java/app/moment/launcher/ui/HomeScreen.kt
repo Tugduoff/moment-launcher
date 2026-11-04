@@ -145,6 +145,12 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
             onDragEnd = { if (kotlin.math.abs(dx) > swipeMin && !vm.ui.value.showOnboarding) vm.openContexts(true) },
         ) { change, d -> dx += d; change.consume() }
     }) {
+        ui.backdrop?.let { bg ->
+            androidx.compose.foundation.Image(bg, null, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+            // A veil of the palette's own ground keeps every row readable on any painting.
+            val veil = if (ctx.look == Look.STUDY) Color(0xFFECEFF4) else Color(0xFFF7F4EE)
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(veil.copy(alpha = .30f), veil.copy(alpha = .60f), veil.copy(alpha = .88f)))))
+        }
         when (ctx.look) {
             Look.GAME -> GameGlow()
             Look.RAIN -> RainOverlay()

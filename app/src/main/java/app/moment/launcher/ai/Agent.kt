@@ -23,6 +23,7 @@ interface AgentHost {
     fun wear(accessory: String): String
     fun undress(): String
     fun share(): String
+    fun paintBackground(description: String): String
     fun progress(text: String)
 }
 
@@ -75,6 +76,7 @@ object Agent {
         .put(fn("wear", "Put on, hold or play something right now (hat, glasses, makeup, instrument). Generated with Muse Image; stacks on what it wears.", props("accessory" to s("3-10 words, specific and visual"))))
         .put(fn("undress", "Take off everything it wears."))
         .put(fn("share_postcard", "Paint a postcard of the companion in the current moment with Muse Image and open the share sheet (for posting on X / Instagram)."))
+        .put(fn("paint_background", "Paint a new home screen background for the current context with Muse Image (a calm wallpaper).", props("description" to s("What the wallpaper shows, 5-15 words, visual"))))
         .put(fn("remember", "Save a durable fact or preference about the user for later (e.g. 'plays guitar', 'gym on Tue and Thu').", props("fact" to s("Short fact"))))
 
     private fun system(memory: List<String>) = """You are the companion living inside Moment, a calm Android home screen: a small round yellow fruit with a leaf.
@@ -144,6 +146,7 @@ ${if (memory.isEmpty()) "" else "What you remember about the user: " + memory.jo
             "wear" -> { step("Trying on ${a.optString("accessory")}"); host.wear(a.optString("accessory")) }
             "undress" -> { step("Taking everything off"); host.undress() }
             "share_postcard" -> { step("Painting a postcard"); host.share() }
+            "paint_background" -> { step("Painting a background"); host.paintBackground(a.optString("description")) }
             "remember" -> { step("Remembering: ${a.optString("fact")}"); host.remember(a.optString("fact")); "saved" }
             else -> "unknown tool"
         }

@@ -92,6 +92,8 @@ fun DemoPanel(vm: MomentViewModel, ui: UiState) {
                 OutlinedButton({ go { vm.openWardrobe(true) } }) { Text("Wardrobe", 13, ink) }
                 OutlinedButton({ go { vm.openContexts(true) } }) { Text("Contexts", 13, ink) }
                 OutlinedButton({ go { vm.replayOnboarding() } }) { Text("Replay onboarding", 13, ink) }
+                OutlinedButton({ go { ui.context?.let { vm.paintBackdrop(it, null) } } }) { Text("Paint a background", 13, ink) }
+                OutlinedButton({ go { vm.clearBackdrops() } }) { Text("Clear backgrounds", 13, ink) }
             }
             Text("Signals", 14, ink2)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
