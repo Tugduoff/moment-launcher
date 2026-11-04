@@ -841,6 +841,9 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
 
     fun editRow(item: NowItem?) = _ui.update { it.copy(rowEdit = item) }
 
+    /** Opens the app picker straight away (an empty label means "add", not "edit"). */
+    fun addApp() = _ui.update { it.copy(rowEdit = NowItem(""), backdropMenu = false) }
+
     private fun editItems(f: (MutableList<NowItem>) -> Unit) {
         val st = _ui.value; val c = st.context ?: return
         val list = st.items.toMutableList(); f(list)

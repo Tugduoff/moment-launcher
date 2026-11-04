@@ -66,7 +66,7 @@ private fun Choice(label: String, p: Palette, onClick: () -> Unit) =
 fun EditRowSheet(vm: MomentViewModel, ui: UiState) {
     val item = ui.rowEdit ?: return
     val p = palette(Look.CREAM)
-    var mode by remember(item) { mutableStateOf("menu") } // menu | swap | add
+    var mode by remember(item) { mutableStateOf(if (item.label.isEmpty()) "add" else "menu") } // menu | swap | add
     var q by remember(item) { mutableStateOf("") }
     val index = ui.items.indexOfFirst { it.label == item.label }
     ModalBottomSheet(onDismissRequest = { vm.editRow(null) }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SHEET) {
@@ -124,7 +124,7 @@ fun BackdropSheet(vm: MomentViewModel, ui: UiState) {
     var wish by remember { mutableStateOf("") }
     ModalBottomSheet(onDismissRequest = { vm.openBackdropMenu(false) }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SHEET) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp).padding(bottom = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Background", 28, p.text, weight = 500)
+            Text("This screen", 28, p.text, weight = 500)
             Spacer(Modifier.height(6.dp))
             ui.backdrop?.let { bg ->
                 androidx.compose.foundation.Image(bg, null, Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(22.dp)),
@@ -136,6 +136,7 @@ fun BackdropSheet(vm: MomentViewModel, ui: UiState) {
                 Spacer(Modifier.width(10.dp))
                 Text("Paint", 17, p.text, weight = 500, underline = true, modifier = Modifier.clickable { vm.repaint(wish.ifBlank { null }) }.padding(8.dp))
             }
+            if (ui.items.size < 4) Option(PLUS, "Add an app", p) { vm.addApp() }
             Option(Icons.SPARKLE, "Paint again", p) { vm.repaint(null) }
             Option(PHOTO, "Use my photo", p) { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
             if (ui.backdrop != null) Option(Icons.CLOSE, "Remove", p) { vm.removeBackdrop() }

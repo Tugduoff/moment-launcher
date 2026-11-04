@@ -245,7 +245,14 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                                 if (isAction(item)) ActionCard(item, p, onLong = { buzz(); vm.editRow(item) }) { vm.runItem(item) }
                                 else AppRow(item, p, onLong = { buzz(); vm.editRow(item) }) { vm.runItem(item) }
                             }
-                            if (ui.hiddenApps.isNotEmpty() && !ui.focusUnlocked) {
+                            // Nothing left on this moment: a quiet way back.
+                        if (ui.items.isEmpty()) Row(
+                            Modifier.fillMaxWidth().height(44.dp).clickable { vm.addApp() },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            LineIcon("M12 5V19 M5 12H19", p.text2, 20.dp); Spacer(Modifier.width(10.dp)); Text("Add an app", 20, p.text2)
+                        }
+                        if (ui.hiddenApps.isNotEmpty() && !ui.focusUnlocked) {
                                 Spacer(Modifier.height(4.dp)); HiddenRow(ui, p) { vm.openAnyway() }
                             }
                         }
