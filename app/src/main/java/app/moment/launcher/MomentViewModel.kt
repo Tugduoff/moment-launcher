@@ -89,6 +89,9 @@ data class UiState(
     val showWardrobe: Boolean = false,
     val showContexts: Boolean = false,
     val showOnboarding: Boolean = false,
+    /** Long-press editing: the row being edited, and the background menu. */
+    val rowEdit: NowItem? = null,
+    val backdropMenu: Boolean = false,
     /** The companion-painted background of the current context, if any. */
     val backdrop: androidx.compose.ui.graphics.ImageBitmap? = null,
     /** A context the user picked by hand in the Contexts list; it wins until [pinnedUntil]. */
@@ -177,7 +180,8 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         if (pinned == null && st0.pinnedId != null) _ui.update { it.copy(pinnedId = null) }
         val ctx = pinned ?: ContextEngine.resolve(s, user, distracting)
         val hidden = if (ctx.focus) (ctx.hide + distracting).distinct() else emptyList()
-        val items = ctx.items.sortedByDescending { store.tapCount(ctx.id, it.label) }
+        val manual = store.itemsFor(ctx.id)
+        val items = manual ?: ctx.items.sortedByDescending { store.tapCount(ctx.id, it.label) }
         val pattern = ContextEngine.patternAt(s, store.visits(), user, store.dismissedPlaces())
             .takeIf { dismissStreak < 2 }
 
@@ -681,7 +685,8 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     private fun backdropOk(c: MomentContext) = c.look == Look.CREAM || c.look == Look.STUDY
 
     private fun backdropFor(c: MomentContext): androidx.compose.ui.graphics.ImageBitmap? {
-        if (!backdropOk(c)) return null
+        val custom = uiPrefs.getBoolean("custom_${c.id}", false)
+        if (!backdropOk(c) && !custom) return null
         val img = backdropCache.getOrPut(c.id) { Backdrops.load(getApplication(), c.id)?.asImageBitmap() }
         // Proactive: the first time one of your contexts (or home) is on screen, it paints one, once.
         if (img == null && !painting && MuseClient.hasKey && !_ui.value.showOnboarding && (!c.builtIn || c.id == "home") &&
@@ -712,6 +717,55 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
                 .onFailure { Log.e("Moment", "backdrop", it); say("My brushes slipped. Try again later?", 4_000) }
             painting = false
         }
+    }
+
+    // ---- Long-press editing: rows and background, no AI needed -------------------------------
+
+    fun editRow(item: NowItem?) = _ui.update { it.copy(rowEdit = item) }
+
+    private fun editItems(f: (MutableList<NowItem>) -> Unit) {
+        val st = _ui.value; val c = st.context ?: return
+        val list = st.items.toMutableList(); f(list)
+        store.setItems(c.id, list); _ui.update { it.copy(rowEdit = null) }; recompute()
+    }
+
+    fun removeRow(item: NowItem) = editItems { it.removeAll { r -> r.label == item.label } }
+
+    fun swapRow(item: NowItem?, app: InstalledApp) = editItems { list ->
+        val row = NowItem(app.label, "", "app", app.label)
+        val i = list.indexOfFirst { it.label == item?.label }
+        if (i >= 0) list[i] = row else if (list.size < 4) list += row
+    }
+
+    fun resetRows() { _ui.value.context?.let { store.setItems(it.id, it.items) }; _ui.update { it.copy(rowEdit = null) }; recompute() }
+
+    fun openBackdropMenu(open: Boolean) = _ui.update { it.copy(backdropMenu = open) }
+
+    fun repaint(wish: String?) {
+        val c = _ui.value.context ?: return
+        uiPrefs.edit().putBoolean("custom_${c.id}", true).apply()
+        _ui.update { it.copy(backdropMenu = false) }
+        paintBackdrop(c, wish)
+    }
+
+    fun useMyPhoto(uri: android.net.Uri) {
+        val c = _ui.value.context ?: return
+        _ui.update { it.copy(backdropMenu = false) }
+        viewModelScope.launch {
+            runCatching { Backdrops.fromPhoto(getApplication(), c.id, uri) }
+                .onSuccess { bmp ->
+                    uiPrefs.edit().putBoolean("custom_${c.id}", true).putBoolean("painted_${c.id}", true).apply()
+                    backdropCache[c.id] = bmp.asImageBitmap(); recompute()
+                }
+                .onFailure { Log.e("Moment", "photo backdrop", it); say("Couldn't open that photo.", 3_000) }
+        }
+    }
+
+    fun removeBackdrop() {
+        val c = _ui.value.context ?: return
+        Backdrops.remove(getApplication(), c.id)
+        uiPrefs.edit().putBoolean("custom_${c.id}", false).putBoolean("painted_${c.id}", true).apply()
+        backdropCache.remove(c.id); _ui.update { it.copy(backdropMenu = false) }; recompute()
     }
 
     fun clearBackdrops() { Backdrops.clear(getApplication()); backdropCache.clear(); recompute() }

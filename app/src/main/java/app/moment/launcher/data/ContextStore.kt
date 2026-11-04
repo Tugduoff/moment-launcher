@@ -57,5 +57,11 @@ class ContextStore(ctx: Context) {
     fun memory(): List<String> = JSONArray(prefs.getString("memory", "[]")).strings()
     fun remember(fact: String) = prefs.edit().putString("memory", JSONArray((memory() + fact).takeLast(30)).toString()).apply()
 
+    /** Rows the user edited by hand (long-press: swap or remove), per context. */
+    fun itemsFor(contextId: String): List<NowItem>? =
+        prefs.getString("items_$contextId", null)?.let { JSONArray(it).objects().map { o -> NowItem.fromJson(o) } }
+    fun setItems(contextId: String, items: List<NowItem>) =
+        prefs.edit().putString("items_$contextId", JSONArray(items.map { it.toJson() }).toString()).apply()
+
     fun reset() = prefs.edit().clear().apply()
 }

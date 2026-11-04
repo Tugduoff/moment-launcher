@@ -145,12 +145,19 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
             onDragStart = { dx = 0f },
             onDragEnd = { if (kotlin.math.abs(dx) > swipeMin && !vm.ui.value.showOnboarding) vm.openContexts(true) },
         ) { change, d -> dx += d; change.consume() }
+    }.pointerInput(Unit) {
+        // Long-press on empty space: change the background (paint again, your photo, remove).
+        detectTapGestures(onLongPress = { vm.openBackdropMenu(true) })
     }) {
         ui.backdrop?.let { bg ->
             androidx.compose.foundation.Image(bg, null, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
             // A veil of the palette's own ground keeps every row readable on any painting.
-            val veil = if (ctx.look == Look.STUDY) Color(0xFFECEFF4) else Color(0xFFF7F4EE)
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(veil.copy(alpha = .30f), veil.copy(alpha = .60f), veil.copy(alpha = .88f)))))
+            // Fog at the top (behind the clock) and the bottom (behind the rows); the middle stays clear.
+            val veil = when { p.dark -> Color(0xFF121317); ctx.look == Look.STUDY -> Color(0xFFECEFF4); else -> Color(0xFFF7F4EE) }
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
+                0f to veil.copy(alpha = .82f), .28f to veil.copy(alpha = .35f), .45f to veil.copy(alpha = .12f),
+                .62f to veil.copy(alpha = .55f), .78f to veil.copy(alpha = .86f), 1f to veil.copy(alpha = .94f),
+            )))
         }
         when (ctx.look) {
             Look.GAME -> GameGlow()
@@ -195,11 +202,12 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                     key == "proposal" -> ProposalCard(vm, ui, p)
                     key == "plan" -> PlanCard(vm, ui, p)
                     ctx.bigButtons -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        ui.items.forEach { BigTile(it, p) { vm.runItem(it) } }
+                        ui.items.forEach { BigTile(it, p, onLong = { vm.editRow(it) }) { vm.runItem(it) } }
                     }
                     else -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         ui.items.forEach { item ->
-                            if (isAction(item)) ActionCard(item, p) { vm.runItem(item) } else AppRow(item, p) { vm.runItem(item) }
+                            if (isAction(item)) ActionCard(item, p, onLong = { vm.editRow(item) }) { vm.runItem(item) }
+                            else AppRow(item, p, onLong = { vm.editRow(item) }) { vm.runItem(item) }
                         }
                         if (ui.hiddenApps.isNotEmpty() && !ui.focusUnlocked) {
                             Spacer(Modifier.height(4.dp)); HiddenRow(ui, p) { vm.openAnyway() }
@@ -297,10 +305,11 @@ private fun Chip(text: String, p: Palette) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AppRow(item: NowItem, p: Palette, onClick: () -> Unit) {
+private fun AppRow(item: NowItem, p: Palette, onLong: () -> Unit = {}, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().height(44.dp).clickable(onClick = onClick),
+        Modifier.fillMaxWidth().height(44.dp).combinedClickable(onLongClick = onLong, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(item.label, 24, p.text, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
@@ -308,12 +317,13 @@ private fun AppRow(item: NowItem, p: Palette, onClick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ActionCard(item: NowItem, p: Palette, onClick: () -> Unit) {
+private fun ActionCard(item: NowItem, p: Palette, onLong: () -> Unit = {}, onClick: () -> Unit) {
     val shape = RoundedCornerShape(22.dp)
     Row(
         Modifier.fillMaxWidth().height(72.dp).background(p.pill, shape).border(1.dp, p.stroke, shape)
-            .clickable(onClick = onClick).padding(start = 14.dp, end = 16.dp),
+            .combinedClickable(onLongClick = onLong, onClick = onClick).padding(start = 14.dp, end = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(44.dp).border(1.5.dp, p.stroke, CircleShape), contentAlignment = Alignment.Center) {
@@ -328,12 +338,13 @@ private fun ActionCard(item: NowItem, p: Palette, onClick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun BigTile(item: NowItem, p: Palette, onClick: () -> Unit) {
+private fun BigTile(item: NowItem, p: Palette, onLong: () -> Unit = {}, onClick: () -> Unit) {
     val shape = RoundedCornerShape(28.dp)
     Row(
         Modifier.fillMaxWidth().height(116.dp).background(p.pill, shape).border(1.dp, p.stroke, shape)
-            .clickable(onClick = onClick).padding(horizontal = 28.dp),
+            .combinedClickable(onLongClick = onLong, onClick = onClick).padding(horizontal = 28.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         LineIcon(iconFor(item), p.text, 36.dp, stroke = 1.6f)
@@ -468,7 +479,7 @@ private fun SearchResults(vm: MomentViewModel, ui: UiState, p: Palette) {
             Triple("Wardrobe", "What your companion wears", { vm.setQuery(""); vm.openWardrobe(true) }),
             Triple("Contexts", "Every moment Moment knows", { vm.setQuery(""); vm.openContexts(true) }),
         ).filter { it.first.startsWith(q, ignoreCase = true) }.forEach { (label, detail, open) ->
-            ActionCard(NowItem(label, detail, "moment"), p, open)
+            ActionCard(NowItem(label, detail, "moment"), p, onClick = open)
         }
         ui.results.forEach { app ->
             Row(Modifier.fillMaxWidth().height(44.dp).clickable { vm.launch(app) }, verticalAlignment = Alignment.CenterVertically) {
