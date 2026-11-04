@@ -129,6 +129,10 @@ data class UiState(
     val widgetPicker: Boolean = false,
     /** The widget being resized, and a counter bumped on every size change (to redraw). */
     val editingWidget: Int? = null,
+    /** Bumped to focus the search field (swipe up). */
+    val searchFocus: Int = 0,
+    /** What the companion reacts to on its own: "music", "rain", "late", "charging", or null. */
+    val vibe: String? = null,
     val widgetSizes: Int = 0,
     /** Favourite contacts (first names shown), and the picker with every contact. */
     val favourites: List<String> = emptyList(),
@@ -251,6 +255,19 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         val layers = worn.mapNotNull { shownLayer(it) }
         worn.filter { layerImage(it) == null }.forEach { prefetch(it) }
         bodyMoments(s)
+        val hourNow = s.minuteOfDay / 60
+        val music = runCatching { (getApplication<Application>().getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager).isMusicActive }.getOrDefault(false)
+        val vibe = when {
+            music -> "music"
+            s.raining -> "rain"
+            hourNow in 0..4 -> "late"
+            s.charging -> "charging"
+            else -> null
+        }
+        if (vibe != _ui.value.vibe) {
+            _ui.update { it.copy(vibe = vibe) }
+            when (vibe) { "music" -> say("♪ Good one.", 3_000); "late" -> say("It's late… *yawn*", 3_500); else -> Unit }
+        }
         val backdrop = backdropFor(ctx)
         val changed = ctx.id != lastContextId
         if (changed) {
@@ -283,6 +300,9 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             st.proposal != null || st.plan != null -> Mood.TALKING
             st.chatting -> Mood.AWAKE
             st.pattern != null -> Mood.AWAKE
+            // On its own, it reacts to the moment: nods along to music, gets sleepy after midnight.
+            st.vibe == "music" && ctxMood in setOf(Mood.ASLEEP, Mood.AWAKE) -> Mood.HEADPHONES
+            st.vibe == "late" && ctxMood in setOf(Mood.ASLEEP, Mood.AWAKE) -> Mood.SLEEPY
             else -> ctxMood
         }
         val ideaBubble = st.pattern != null && st.proposal == null && !st.thinking && (st.bubble == null || st.bubbleIsIdea)
@@ -817,6 +837,28 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val apps = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { phone.installedApps() }
             if (apps != _ui.value.apps) _ui.update { it.copy(apps = apps) }
+        }
+    }
+
+    // ---- Home gestures ------------------------------------------------------------------------
+
+    /** Swipe down: the notification shade, like on any launcher. */
+    fun expandNotifications() {
+        runCatching {
+            val sb = getApplication<Application>().getSystemService("statusbar")
+            Class.forName("android.app.StatusBarManager").getMethod("expandNotificationsPanel").invoke(sb)
+        }.onFailure { Log.e("Moment", "shade", it) }
+    }
+
+    fun focusSearch() = _ui.update { it.copy(searchFocus = it.searchFocus + 1) }
+
+    /** Double-tap: lock. Needs the small accessibility service on, which the user enables once. */
+    fun lockScreen() {
+        if (app.moment.launcher.system.LockService.lock()) return
+        say("Turn on \"Moment: double-tap to lock\" in Accessibility, then double-tap again.", 6_000)
+        runCatching {
+            getApplication<Application>().startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
         }
     }
 
