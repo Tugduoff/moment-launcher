@@ -36,3 +36,65 @@ _(optional; fill in if you used Baseten / Modal / Fireworks)_
 - Biggest obstacle: Slow responses (default reasoning effort ~14 s; fixed with `reasoning_effort: minimal`)
 - Compared with other models: _your call_
 - What matters most: Quality of the answers; Easy integration (OpenAI-compatible API)
+
+---
+
+# Bonus prizes to aim for (from the participant guide)
+
+- **Most Viral Project ($20K):** post the demo on X, then submit the post link on the hackathon platform. Ranked on likes + reposts + comments until **Nov 8 EOD**.
+- **Best Creative Build ($5K):** Muse Image use (rig bodies, runtime outfits that stack, postcards). Flagged in round one.
+- **Best Agentic Use-Case ($5K):** the Muse Spark tool-calling agent with the staged plan card.
+- **Community Vote ($10K):** public gallery votes, announced Nov 16. Share the gallery link once it is up.
+
+# YouTube (the 3-minute submission video)
+
+Visibility: **Public** or **Unlisted** (the form needs a link judges can open; Public also helps views).
+
+**Title:** Moment: a home screen that knows what this moment needs (Meta Muse Spark + Muse Image)
+
+**Description:**
+Moment is a calm Android launcher with one living companion. Instead of thirty icons, it shows a clock, the companion, at most four things for this moment, and search.
+
+At the uni restaurant at noon: Pay with Izly, directions. In the car: three big buttons. At the library: distracting apps hidden. Late at night: a ride home, share location, call a friend.
+
+Built solo in 9 days for the Meta Global AI Developer Hackathon:
+• Muse Spark agent with real tool calling turns one sentence into staged contexts you approve
+• Muse Spark vision reads a photo of your timetable
+• Muse Spark + web search for live weather
+• Muse Image drew the companion and dresses it at runtime (accessories stack), then paints shareable postcards
+• Muse Voice Transcribe for push-to-talk
+
+Code (MIT): https://github.com/Tugduoff/moment-launcher
+
+0:00 The problem
+(add chapters once the cut is final)
+
+#MetaHackathon #MuseSpark #Android
+
+# X post (Most Viral)
+
+X caps videos at 2:20 on non-Premium accounts: post a short cut (30–60 s) natively, link the full video on YouTube.
+
+**Main post (with the short video attached):**
+My home screen used to have 30 icons. Now it has 4, and a little peach that knows where I am 🍑
+
+Moment is an Android launcher that shows what this moment needs and hides the rest. Built solo for the @AIatMeta hackathon with Muse Spark + Muse Image.
+
+Full demo + code ↓
+
+**Reply 1:**
+At the uni restaurant at noon it shows Pay + directions. In the car, three big buttons. At the library it hides Instagram, and "Open anyway" makes you wait 10 s.
+
+It noticed I eat there every weekday and asked before changing anything.
+
+**Reply 2:**
+Ask it to "put on a cowboy hat, then play guitar" and Muse Image dresses it. Accessories stack, and the face keeps blinking on top (it's drawn live at 60 fps).
+
+**Reply 3:**
+"I go to the gym Tuesday and Thursday evenings" → the Muse Spark agent checks your apps and time, and stages two contexts on one card you approve.
+
+3-min demo: <YouTube link>
+Code (MIT): https://github.com/Tugduoff/moment-launcher
+@cerebral_valley #MetaHackathon
+
+Tips: post with the video natively (not a link) for reach; reply to every comment the first day; pin the post; ask friends to repost early. Then paste the post link in the submission form.
