@@ -147,6 +147,12 @@ fun WardrobeSheet(vm: MomentViewModel, ui: UiState) {
                 }
             }
 
+            // Colours: body, leaf and eyes, applied on the phone instantly (no model call).
+            Text("Colours", 13, p.text2)
+            val skin = Skin.current
+            SwatchRow(Skin.BODIES.mapIndexed { i, (n, h) -> n to swatch(h, Color(0xFFF6B27A), 0.55f) }, skin.body) { vm.setSkin(skin.copy(body = it)) }
+            SwatchRow(Skin.LEAVES.mapIndexed { i, (n, h) -> n to swatch(h, Color(0xFF7DB36A), 0.5f) }, skin.leaf) { vm.setSkin(skin.copy(leaf = it)) }
+            SwatchRow(Skin.EYES.map { (n, c) -> n to c }, skin.eyes) { vm.setSkin(skin.copy(eyes = it)) }
             Text("Try on", 13, p.text2)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SUGGESTIONS.forEach { (label, prompt) ->
@@ -194,4 +200,21 @@ internal fun PillChip(p: Palette, modifier: Modifier = Modifier, content: @Compo
         modifier.background(p.pill, shape).border(1.dp, p.stroke, shape).padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) { content() }
+}
+
+private fun swatch(hue: Float, original: Color, sat: Float): Color =
+    if (hue < 0) original else Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat, 0.96f)))
+
+/** One row of colour dots; the chosen one is ringed. Names are read out by TalkBack. */
+@Composable
+private fun SwatchRow(options: List<Pair<String, Color>>, selected: Int, onPick: (Int) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        options.forEachIndexed { i, (name, c) ->
+            Box(
+                Modifier.size(36.dp).border(if (i == selected) 2.dp else 0.dp, if (i == selected) Color(0xFF2A2622) else Color.Transparent, CircleShape)
+                    .padding(4.dp).background(c, CircleShape).border(1.dp, Color(0x22000000), CircleShape)
+                    .clickable(onClickLabel = name) { onPick(i) },
+            )
+        }
+    }
 }

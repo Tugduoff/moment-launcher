@@ -58,7 +58,8 @@ object Outfits {
     fun composite(ctx: Context, items: List<String>): Bitmap {
         val out = Bitmap.createBitmap(SIDE, SIDE, Bitmap.Config.ARGB_8888)
         Canvas(out).apply {
-            drawBitmap(Bitmap.createScaledBitmap(BitmapFactory.decodeResource(ctx.resources, R.drawable.body), SIDE, SIDE, true), 0f, 0f, null)
+            val plain = Bitmap.createScaledBitmap(BitmapFactory.decodeResource(ctx.resources, R.drawable.body), SIDE, SIDE, true)
+            drawBitmap(app.moment.launcher.ui.Skin.recolor(R.drawable.body, plain, app.moment.launcher.ui.Skin.current), 0f, 0f, null)
             items.mapNotNull { load(ctx, it) }.forEach { drawBitmap(it, 0f, 0f, null) }
         }
         return out

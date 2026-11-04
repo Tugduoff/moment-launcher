@@ -13,6 +13,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
@@ -50,7 +51,7 @@ import kotlin.random.Random
  * Face anchors are measured from the Muse Image sprites, in units of the sprite's side.
  */
 
-private val INK = Color(0xFF4A3024)
+private val INK get() = Skin.EYES[Skin.current.eyes].second
 private const val EYE_L_X = 0.378f
 private const val EYE_R_X = 0.606f
 private const val EYE_Y = 0.598f
@@ -205,7 +206,15 @@ fun Companion(
             }
         ) {
             // The mood's body, then each accessory layer on top: nothing is redrawn when an item changes.
-            Image(painterResource(body(mood)), contentDescription = "Companion, ${mood.name.lowercase()}", Modifier.fillMaxSize())
+            val skin = Skin.current
+            if (skin.isDefault) Image(painterResource(body(mood)), contentDescription = "Companion, ${mood.name.lowercase()}", Modifier.fillMaxSize())
+            else {
+                val res = androidx.compose.ui.platform.LocalContext.current.resources
+                val tinted = remember(mood, skin) {
+                    Skin.recolor(body(mood), android.graphics.BitmapFactory.decodeResource(res, body(mood)), skin).asImageBitmap()
+                }
+                Image(tinted, contentDescription = "Companion, ${mood.name.lowercase()}", Modifier.fillMaxSize())
+            }
             layers.forEach { Image(it, contentDescription = null, Modifier.fillMaxSize()) }
             Canvas(Modifier.fillMaxSize()) { drawFace(rig, mood, happy, br) }
         }

@@ -9,6 +9,7 @@ import app.moment.launcher.ai.MuseClient
 import app.moment.launcher.ai.MuseJobs
 import app.moment.launcher.ai.Outfits
 import app.moment.launcher.system.Widgets
+import app.moment.launcher.ui.Skin
 import app.moment.launcher.ai.Agent
 import app.moment.launcher.ai.AgentHost
 import app.moment.launcher.ai.AgentPlan
@@ -168,6 +169,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     init {
         real.start(); body.start()
         Outfits.dropLegacy(app)
+        Skin.current = Skin.decode(app.getSharedPreferences("moment_ui", android.content.Context.MODE_PRIVATE).getString("skin", null))
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { body.steps.collect { recompute() } }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { body.shakes.collect { n -> if (n > 0) shaken() } }
         _ui.update { it.copy(effectsOff = uiPrefs.getBoolean("effects_off", false), demoContexts = uiPrefs.getBoolean("demo_contexts", false), widgetIds = widgets.ids()) }
@@ -814,6 +816,13 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshWidgets() = _ui.update { it.copy(widgetIds = widgets.ids()) }
 
     /** Demo panel: show or hide the built-in sample contexts. */
+    /** The companion's colours (wardrobe). */
+    fun setSkin(skin: Skin) {
+        Skin.current = skin
+        uiPrefs.edit().putString("skin", skin.encode()).apply()
+        _ui.update { it.copy(hop = it.hop + 1) }
+    }
+
     fun setDemoContexts(on: Boolean) {
         uiPrefs.edit().putBoolean("demo_contexts", on).apply()
         _ui.update { it.copy(demoContexts = on, pinnedId = null) }
