@@ -182,11 +182,14 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
             )))
         }
         val effect = Style.current.effect
+        // Real rain shows as rain on Auto, whatever the context; the umbrella only appears with it.
+        val rainVisible = !ui.effectsOff && effect == 0 && (ctx.look == Look.RAIN || ui.signals?.raining == true)
+        val vibe = if (ui.vibe == "rain" && !rainVisible) null else ui.vibe
         if (!ui.effectsOff) when {
             effect == 1 -> Unit
             effect > 1 -> EffectLayer(effect)
+            rainVisible -> RainOverlay()
             ctx.look == Look.GAME -> GameGlow()
-            ctx.look == Look.RAIN -> RainOverlay()
             ctx.look == Look.NIGHT -> NightStars()
             else -> Unit
         }
@@ -237,7 +240,7 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.combinedClickable(remember { MutableInteractionSource() }, null, onLongClick = { vm.openWardrobe(true) }) { vm.tapCompanion() }) {
-                        Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, layers = ui.layers, dizzyKey = ui.dizzy, vibe = ui.vibe)
+                        Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, layers = ui.layers, dizzyKey = ui.dizzy, vibe = vibe)
                     }
                 }
             } else {
@@ -285,7 +288,7 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.combinedClickable(remember { MutableInteractionSource() }, null, onLongClick = { vm.openWardrobe(true) }) { vm.tapCompanion() }, contentAlignment = Alignment.Center) {
                         if (ui.listening) ListeningRings(ui.voiceLevel, p.text)
-                        Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, layers = ui.layers, dizzyKey = ui.dizzy, vibe = ui.vibe)
+                        Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, layers = ui.layers, dizzyKey = ui.dizzy, vibe = vibe)
                     }
                     Spacer(Modifier.width(4.dp))
                     AnimatedContent(
