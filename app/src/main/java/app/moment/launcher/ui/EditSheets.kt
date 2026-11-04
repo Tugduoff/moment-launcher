@@ -141,6 +141,8 @@ fun BackdropSheet(vm: MomentViewModel, ui: UiState) {
             Option(Icons.SPARKLE, "Paint again", p) { vm.repaint(null) }
             Option(PHOTO, "Use my photo", p) { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
             if (ui.backdrop != null) Option(Icons.CLOSE, "Remove", p) { vm.removeBackdrop() }
+            if (ui.widgetIds.size < app.moment.launcher.system.Widgets.MAX) Option(PLUS, "Add a widget", p) { vm.openWidgetPicker(true) }
+            ui.widgetIds.forEach { id -> Option(Icons.CLOSE, "Remove widget: ${vm.widgets.label(id)}", p) { vm.removeWidget(id) } }
         }
     }
 }
@@ -164,6 +166,32 @@ fun FocusGuardSheet(vm: MomentViewModel, ui: UiState) {
             Option(Icons.LOCK, "Stay focused", p) { vm.guardCancel() }
             val sec = ui.guardSeconds
             Option(Icons.CHEVRON, if (sec == null) "Open in 10 s" else "Opening in $sec s…", p, dim = sec != null) { if (sec == null) vm.guardOpen() }
+        }
+    }
+}
+
+/** Every widget the installed apps offer, grouped by app. Tapping one adds it under the clock. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun WidgetPickerSheet(vm: MomentViewModel, ui: UiState, onPick: (android.appwidget.AppWidgetProviderInfo) -> Unit) {
+    if (!ui.widgetPicker) return
+    val p = palette(Look.CREAM)
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val providers = remember { vm.widgets.providers() }
+    ModalBottomSheet(onDismissRequest = { vm.openWidgetPicker(false) }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SHEET) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp).navigationBarsPadding()) {
+            Text("Add a widget", 28, p.text, weight = 500)
+            Spacer(Modifier.height(10.dp))
+            if (providers.isEmpty()) Text("No app on this phone offers a widget.", 16, p.text2)
+            LazyColumn(Modifier.heightIn(max = 520.dp)) {
+                items(providers, key = { it.provider.flattenToString() }) { info ->
+                    Column(Modifier.fillMaxWidth().clickable { onPick(info) }.padding(vertical = 10.dp)) {
+                        Text(info.loadLabel(ctx.packageManager), 17, p.text, weight = 500, maxLines = 1)
+                        Text(vm.widgets.appLabel(info), 14, p.text2, maxLines = 1)
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
         }
     }
 }

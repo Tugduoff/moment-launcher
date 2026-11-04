@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import app.moment.launcher.ai.MuseClient
 import app.moment.launcher.ai.MuseJobs
 import app.moment.launcher.ai.Outfits
+import app.moment.launcher.system.Widgets
 import app.moment.launcher.ai.Agent
 import app.moment.launcher.ai.AgentHost
 import app.moment.launcher.ai.AgentPlan
@@ -118,6 +119,11 @@ data class UiState(
     val pinnedUntil: Long = 0,
     val wardrobe: List<String> = emptyList(),
     val contexts: List<MomentContext> = emptyList(),
+    /** Built-in sample contexts (study, driving…): off by default, switched on from the demo panel. */
+    val demoContexts: Boolean = false,
+    /** Widgets on the home screen (AppWidgetHost ids), and the picker. */
+    val widgetIds: List<Int> = emptyList(),
+    val widgetPicker: Boolean = false,
 )
 
 private const val CITY = "Paris, France"
@@ -144,6 +150,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     /** Layers that failed recently: not retried for 10 minutes (recompute runs every 5 s). */
     private val drawFailedAt = mutableMapOf<String, Long>()
 
+    val widgets = Widgets(app)
     private val real = RealSignals(app)
     val body = Body(app)
     val senses = Senses(app)
@@ -159,7 +166,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         Outfits.dropLegacy(app)
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { body.steps.collect { recompute() } }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { body.shakes.collect { n -> if (n > 0) shaken() } }
-        _ui.update { it.copy(effectsOff = uiPrefs.getBoolean("effects_off", false)) }
+        _ui.update { it.copy(effectsOff = uiPrefs.getBoolean("effects_off", false), demoContexts = uiPrefs.getBoolean("demo_contexts", false), widgetIds = widgets.ids()) }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { real.devices.collect { d -> _ui.update { it.copy(realCar = d.carName) }; recompute() } }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { while (true) { refreshWeather(); delay(30 * 60_000L) } }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { refreshApps() }
@@ -210,7 +217,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         val st0 = _ui.value
         val pinned = st0.pinnedId?.takeIf { System.currentTimeMillis() < st0.pinnedUntil }?.let { id -> pickable(s, user, distracting).firstOrNull { it.id == id } }
         if (pinned == null && st0.pinnedId != null) _ui.update { it.copy(pinnedId = null) }
-        val ctx = pinned ?: ContextEngine.resolve(s, user, distracting)
+        val ctx = pinned ?: ContextEngine.resolve(s, user, distracting, st0.demoContexts)
         val hidden = if (ctx.focus) (ctx.hide + distracting).distinct() else emptyList()
         val manual = store.itemsFor(ctx.id)
         val event = if (on("calendar")) senses.nextEvent(System.currentTimeMillis()) else null
@@ -773,7 +780,35 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- Apps -------------------------------------------------------------------------------
 
-    fun refreshApps() { _ui.update { it.copy(apps = phone.installedApps()) } }
+    private var appsLoadedAt = 0L
+
+    /**
+     * Reads the installed apps off the main thread. Called on every resume, so it is throttled:
+     * coming back home must draw the first frame right away, not wait for the package manager.
+     */
+    fun refreshApps(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && now - appsLoadedAt < 60_000L && _ui.value.apps.isNotEmpty()) return
+        appsLoadedAt = now
+        viewModelScope.launch {
+            val apps = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { phone.installedApps() }
+            if (apps != _ui.value.apps) _ui.update { it.copy(apps = apps) }
+        }
+    }
+
+    // ---- Widgets ------------------------------------------------------------------------------
+
+    fun openWidgetPicker(open: Boolean) = _ui.update { it.copy(widgetPicker = open, backdropMenu = false) }
+    fun widgetAdded(id: Int) { widgets.add(id); _ui.update { it.copy(widgetIds = widgets.ids(), widgetPicker = false) }; say("Added.", 2_000) }
+    fun removeWidget(id: Int) { widgets.remove(id); _ui.update { it.copy(widgetIds = widgets.ids(), backdropMenu = false) } }
+    fun refreshWidgets() = _ui.update { it.copy(widgetIds = widgets.ids()) }
+
+    /** Demo panel: show or hide the built-in sample contexts. */
+    fun setDemoContexts(on: Boolean) {
+        uiPrefs.edit().putBoolean("demo_contexts", on).apply()
+        _ui.update { it.copy(demoContexts = on, pinnedId = null) }
+        lastContextId = null; recompute()
+    }
 
     fun classifyAppsIfNeeded(force: Boolean = false) {
         if (!MuseClient.hasKey || (!force && store.appCategories().isNotEmpty())) return
@@ -1003,9 +1038,8 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Every context the user can switch to by hand: home, their own, and the built-in ones. */
     private fun pickable(s: Signals, user: List<MomentContext>, distracting: List<String>) =
-        listOf(ContextEngine.home(s)) + user + listOf(
-            ContextEngine.study(distracting), ContextEngine.driving, ContextEngine.game, ContextEngine.rain, ContextEngine.nightOut,
-        ).filter { b -> user.none { it.id == b.id } }
+        listOf(ContextEngine.home(s, _ui.value.demoContexts)) + user +
+            (if (_ui.value.demoContexts) ContextEngine.demoContexts(distracting) else emptyList()).filter { b -> user.none { it.id == b.id } }
 
     /** Tapping a context in the list switches to it for an hour; tapping the active one goes back to automatic. */
     fun useContext(id: String) {

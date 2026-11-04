@@ -73,10 +73,10 @@ internal fun triggerSummary(c: MomentContext): String {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContextsSheet(vm: MomentViewModel, ui: UiState) {
-    val p = palette(Look.CREAM)
-    val all = listOfNotNull(ui.signals?.let { ContextEngine.home(it) }) + ui.contexts + listOf(
-        ContextEngine.study(emptyList()), ContextEngine.driving, ContextEngine.game, ContextEngine.rain, ContextEngine.nightOut,
-    ).filter { b -> ui.contexts.none { it.id == b.id } }
+    // Same colours as the screen it slides over: no jump from a dark context to a bright page.
+    val p = palette(ui.context?.look ?: Look.CREAM)
+    val all = listOfNotNull(ui.signals?.let { ContextEngine.home(it, ui.demoContexts) }) + ui.contexts +
+        (if (ui.demoContexts) ContextEngine.demoContexts(emptyList()) else emptyList()).filter { b -> ui.contexts.none { it.id == b.id } }
     val swipeMin = with(androidx.compose.ui.platform.LocalDensity.current) { 72.dp.toPx() }
     // A full page that slides in from the right; swipe it back to the right (or press back) to close.
     androidx.compose.animation.AnimatedVisibility(
@@ -86,7 +86,7 @@ fun ContextsSheet(vm: MomentViewModel, ui: UiState) {
     ) {
         androidx.activity.compose.BackHandler { vm.openContexts(false) }
         Box(
-            Modifier.fillMaxSize().background(Color(0xFFF7F4EE)).pointerInput(Unit) {
+            Modifier.fillMaxSize().background(p.bg).pointerInput(Unit) {
                 var dx = 0f
                 detectHorizontalDragGestures(
                     onDragStart = { dx = 0f },
@@ -138,7 +138,7 @@ private fun ContextCard(vm: MomentViewModel, c: MomentContext, p: Palette, activ
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(64.dp).background(Color(0xFFF7F4EE), RoundedCornerShape(18.dp)),
+            Modifier.size(64.dp).background(p.pill, RoundedCornerShape(18.dp)),
             contentAlignment = Alignment.Center,
         ) {
             Companion(c.mood.takeIf { it != app.moment.launcher.data.Mood.ASLEEP } ?: app.moment.launcher.data.Mood.AWAKE, 56.dp, layers = vm.layersFor(c))

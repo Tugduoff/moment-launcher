@@ -51,6 +51,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
@@ -221,7 +222,10 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                     }
                 }
             } else {
-                Spacer(Modifier.weight(1f))
+                // Widgets sit under the clock; the free space stays above the rows.
+                Column(Modifier.weight(1f).fillMaxWidth().padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ui.widgetIds.forEach { id -> WidgetSlot(vm, id) }
+                }
                 // The Now block swaps between: search results, a proposal card, or this moment's items.
                 AnimatedContent(
                     targetState = when {
@@ -688,4 +692,14 @@ private fun NightStars() {
     Canvas(Modifier.fillMaxSize()) {
         stars.forEach { (x, y, k) -> drawCircle(Color.White.copy(alpha = (.15f + .5f * k) * (if (k > .5f) tw else 1f)), (0.8f + k * 1.2f) * density, Offset(x * size.width, y * size.height)) }
     }
+}
+
+/** Another app's widget, hosted by Moment. Remove it from "This screen" (long-press the background). */
+@Composable
+private fun WidgetSlot(vm: MomentViewModel, id: Int) {
+    androidx.compose.ui.viewinterop.AndroidView(
+        factory = { c -> vm.widgets.view(c, id).also { v -> (v.parent as? android.view.ViewGroup)?.removeView(v) } },
+        modifier = Modifier.fillMaxWidth().height(vm.widgets.heightDp(id).dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp)),
+    )
 }
