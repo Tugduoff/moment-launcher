@@ -180,6 +180,10 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                 0f to veil.copy(alpha = .82f), .28f to veil.copy(alpha = .35f), .45f to veil.copy(alpha = .12f),
                 .62f to veil.copy(alpha = .55f), .78f to veil.copy(alpha = .86f), 1f to veil.copy(alpha = .94f),
             )))
+            // Searching over a painting: dim it so the result list reads cleanly.
+            androidx.compose.animation.AnimatedVisibility(searching, enter = fadeIn(), exit = fadeOut()) {
+                Box(Modifier.fillMaxSize().background(veil.copy(alpha = .7f)))
+            }
         }
         val effect = Style.current.effect
         // Real rain shows as rain on Auto, whatever the context; the umbrella only appears with it.
