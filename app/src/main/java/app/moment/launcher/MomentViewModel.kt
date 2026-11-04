@@ -138,6 +138,7 @@ data class UiState(
     val vibe: String? = null,
     /** Morning or evening briefing card, shown once per half-day on the home screen. */
     val brief: Brief? = null,
+    val holdNotifications: Boolean = false,
     val widgetSizes: Int = 0,
     /** Favourite contacts (first names shown), and the picker with every contact. */
     val favourites: List<String> = emptyList(),
@@ -190,7 +191,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         Skin.current = Skin.decode(app.getSharedPreferences("moment_ui", android.content.Context.MODE_PRIVATE).getString("skin", null))
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { body.steps.collect { recompute() } }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { body.shakes.collect { n -> if (n > 0) shaken() } }
-        _ui.update { it.copy(effectsOff = uiPrefs.getBoolean("effects_off", false), demoContexts = uiPrefs.getBoolean("demo_contexts", false), widgetIds = widgets.ids()) }
+        _ui.update { it.copy(effectsOff = uiPrefs.getBoolean("effects_off", false), demoContexts = uiPrefs.getBoolean("demo_contexts", false), holdNotifications = uiPrefs.getBoolean("hold_notifications", false), widgetIds = widgets.ids()) }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { real.devices.collect { d -> _ui.update { it.copy(realCar = d.carName) }; recompute() } }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { while (true) { refreshWeather(); delay(30 * 60_000L) } }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { refreshApps() }
@@ -243,6 +244,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         if (pinned == null && st0.pinnedId != null) _ui.update { it.copy(pinnedId = null) }
         val ctx = pinned ?: ContextEngine.resolve(s, user, distracting, st0.demoContexts)
         val hidden = if (ctx.focus) (ctx.hide + distracting).distinct() else emptyList()
+        holdNotifications(ctx.focus && uiPrefs.getBoolean("hold_notifications", false), hidden, apps)
         val manual = store.itemsFor(ctx.id)
         val event = if (on("calendar")) senses.nextEvent(System.currentTimeMillis()) else null
         val friend = if (on("contacts")) favourites().firstOrNull() else null
@@ -844,6 +846,32 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             val apps = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { phone.installedApps() }
             if (apps != _ui.value.apps) _ui.update { it.copy(apps = apps) }
         }
+    }
+
+    // ---- Smart notifications: held during focus, summed up after ---------------------------------
+
+    private var wasHolding = false
+
+    private fun holdNotifications(on: Boolean, hidden: List<String>, apps: List<app.moment.launcher.system.InstalledApp>) {
+        val hub = app.moment.launcher.system.NotifyHub
+        hub.heldPackages = if (on) apps.filter { a -> hidden.any { it.equals(a.label, true) } }.map { it.packageName }.toSet() else emptySet()
+        hub.holding = on
+        if (wasHolding && !on) {
+            val lines = hub.drain { pkg -> apps.firstOrNull { it.packageName == pkg }?.label ?: pkg }
+            if (lines.isNotEmpty()) _ui.update { it.copy(brief = Brief("While you focused", "I held these back. All still in the apps.", lines, false)) }
+        }
+        wasHolding = on
+    }
+
+    fun setHoldNotifications(want: Boolean) {
+        val appCtx = getApplication<Application>()
+        if (want && !app.moment.launcher.system.NotifyHub.enabled(appCtx)) {
+            say("Allow \"Moment\" in notification access, then switch this on again.", 6_000)
+            runCatching { appCtx.startActivity(android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            return
+        }
+        uiPrefs.edit().putBoolean("hold_notifications", want).apply()
+        _ui.update { it.copy(holdNotifications = want) }; recompute()
     }
 
     // ---- Briefings ----------------------------------------------------------------------------
