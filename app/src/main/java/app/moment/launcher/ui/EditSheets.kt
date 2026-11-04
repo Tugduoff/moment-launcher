@@ -263,6 +263,7 @@ fun StyleSheet(vm: MomentViewModel, ui: UiState) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp).padding(bottom = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Style", 28, p.text, weight = 500)
             Text(ui.time.ifBlank { "12:34" }, Style.SIZES[st.clockSize].second / 2 + 20, p.text, weight = Style.WEIGHTS[st.clockWeight].second, font = Style.clockFamily(st))
+            ThemesSection(vm, ui, p)
             Text("Effect", 13, p.text2)
             EffectCarousel(st.effect) { vm.setStyle(st.copy(effect = it)) }
             Text("Clock font", 13, p.text2)
@@ -315,4 +316,29 @@ private fun EffectCarousel(selected: Int, onPick: (Int) -> Unit) {
             }
         }
     }
+}
+
+/** Saved looks: tap to wear one, tie one to this context, share it as a code. */
+@Composable
+private fun ThemesSection(vm: MomentViewModel, ui: UiState, p: Palette) {
+    var name by remember { mutableStateOf("") }
+    val ctx = ui.context
+    Text("Themes", 13, p.text2)
+    ui.themes.forEach { t ->
+        val here = ctx != null && ui.contextThemes[ctx.id] == t.name
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text(t.name, 17, p.text, weight = 500, maxLines = 1, font = Style.family(Style.decode(t.style).font),
+                modifier = Modifier.weight(1f).clickable { vm.applyTheme(t) }.padding(vertical = 8.dp))
+            if (ctx != null) Text(if (here) "In ${ctx.name} ✓" else "Use in ${ctx.name}", 13, if (here) Color(HINT_DOT) else p.text2,
+                modifier = Modifier.clickable { vm.toggleThemeForContext(t) }.padding(8.dp), maxLines = 1)
+            Text("Share", 13, p.text2, underline = true, modifier = Modifier.clickable { vm.shareTheme(t) }.padding(8.dp))
+            LineIcon(Icons.CLOSE, p.text2, 16.dp, modifier = Modifier.clickable { vm.deleteTheme(t) })
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Field(name, "Name this look…", p, { name = it }, Modifier.weight(1f))
+        Spacer(Modifier.width(10.dp))
+        Text("Save", 17, p.text, weight = 500, underline = true, modifier = Modifier.clickable { vm.saveTheme(name); name = "" }.padding(8.dp))
+    }
+    Text("Saves fonts, clock, effect and the companion's colours and face. Paste a shared code in search to import one.", 12, p.text2)
 }

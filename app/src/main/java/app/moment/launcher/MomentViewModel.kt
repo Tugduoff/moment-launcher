@@ -12,6 +12,7 @@ import app.moment.launcher.ai.Outfits
 import app.moment.launcher.system.Widgets
 import app.moment.launcher.ui.Skin
 import app.moment.launcher.ui.Style
+import app.moment.launcher.ui.Theme
 import app.moment.launcher.ai.Agent
 import app.moment.launcher.ai.AgentHost
 import app.moment.launcher.ai.AgentPlan
@@ -139,6 +140,9 @@ data class UiState(
     /** Morning or evening briefing card, shown once per half-day on the home screen. */
     val brief: Brief? = null,
     val holdNotifications: Boolean = false,
+    /** Saved looks, and which context uses which (context id → theme name). */
+    val themes: List<Theme> = emptyList(),
+    val contextThemes: Map<String, String> = emptyMap(),
     val widgetSizes: Int = 0,
     /** Favourite contacts (first names shown), and the picker with every contact. */
     val favourites: List<String> = emptyList(),
@@ -191,7 +195,8 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         Skin.current = Skin.decode(app.getSharedPreferences("moment_ui", android.content.Context.MODE_PRIVATE).getString("skin", null))
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { body.steps.collect { recompute() } }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { body.shakes.collect { n -> if (n > 0) shaken() } }
-        _ui.update { it.copy(effectsOff = uiPrefs.getBoolean("effects_off", false), demoContexts = uiPrefs.getBoolean("demo_contexts", false), holdNotifications = uiPrefs.getBoolean("hold_notifications", false), widgetIds = widgets.ids()) }
+        _ui.update { it.copy(effectsOff = uiPrefs.getBoolean("effects_off", false), demoContexts = uiPrefs.getBoolean("demo_contexts", false), holdNotifications = uiPrefs.getBoolean("hold_notifications", false),
+            themes = Theme.list(uiPrefs.getString("themes", null)), contextThemes = loadContextThemes(), widgetIds = widgets.ids()) }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { real.devices.collect { d -> _ui.update { it.copy(realCar = d.carName) }; recompute() } }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { while (true) { refreshWeather(); delay(30 * 60_000L) } }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { refreshApps() }
@@ -277,6 +282,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             when (vibe) { "music" -> say("♪ Good one.", 3_000); "late" -> say("It's late… *yawn*", 3_500); else -> Unit }
         }
         val backdrop = backdropFor(ctx)
+        applyLookFor(ctx)
         val changed = ctx.id != lastContextId
         if (changed) {
             lastContextId = ctx.id
@@ -392,6 +398,13 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     fun ask(sentence: String) {
         val st = _ui.value; val s = st.signals ?: return
         if (sentence.isBlank()) return
+        if (sentence.trim().contains(Theme.PREFIX)) {
+            val code = sentence.trim().substring(sentence.trim().indexOf(Theme.PREFIX)).substringBefore(' ')
+            val t = Theme.fromCode(code)
+            _ui.update { it.copy(query = "", results = emptyList()) }
+            if (t == null) say("That theme code looks broken.") else { saveTheme(t.name); applyTheme(t) }
+            return
+        }
         val key = sentence.trim().lowercase().trimEnd('.', '?', '!')
         if (key in setOf("me", "about me", "privacy", "permissions", "what you see", "memory")) { _ui.update { it.copy(query = "", results = emptyList()) }; openSenses(true); return }
         if (key in setOf("contexts", "my contexts", "wardrobe", "my wardrobe")) {
@@ -972,7 +985,21 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Demo panel: show or hide the built-in sample contexts. */
     fun openStyle(open: Boolean) = _ui.update { it.copy(showStyle = open, backdropMenu = false) }
-    fun setStyle(style: Style) { Style.current = style; uiPrefs.edit().putString("style", style.encode()).apply(); recompute() }
+    fun setStyle(style: Style) {
+        Style.current = style
+        if (!editThemeOfContext { it.copy(style = style.encode()) }) uiPrefs.edit().putString("style", style.encode()).apply()
+        recompute()
+    }
+
+    /** In a context that wears a theme, look changes edit that theme (else they'd snap back). */
+    private fun editThemeOfContext(change: (Theme) -> Theme): Boolean {
+        val st = _ui.value
+        val name = st.context?.id?.let { st.contextThemes[it] } ?: return false
+        val list = st.themes.map { if (it.name == name) change(it) else it }
+        uiPrefs.edit().putString("themes", Theme.save(list)).apply()
+        _ui.update { it.copy(themes = list) }
+        return true
+    }
 
     // Accessory colours: a hue per layer, applied on the phone.
     private val tintedCache = mutableMapOf<Pair<String, Int>, androidx.compose.ui.graphics.ImageBitmap>()
@@ -991,10 +1018,61 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         return tintedCache.getOrPut(slug to t) { Skin.tint(slug.hashCode(), base.asAndroidBitmap(), t).asImageBitmap() }
     }
 
+    // ---- Themes -------------------------------------------------------------------------------
+
+    private fun loadContextThemes(): Map<String, String> =
+        org.json.JSONObject(uiPrefs.getString("ctx_themes", "{}") ?: "{}").let { o -> o.keys().asSequence().associateWith { o.optString(it) } }
+
+    /** A context with a theme wears it; any other context wears the user's default look. */
+    private fun applyLookFor(ctx: MomentContext) {
+        val st = _ui.value
+        val theme = st.contextThemes[ctx.id]?.let { n -> st.themes.firstOrNull { it.name == n } }
+        val style = theme?.let { Style.decode(it.style) } ?: Style.decode(uiPrefs.getString("style", null))
+        val skin = theme?.let { Skin.decode(it.skin) } ?: Skin.decode(uiPrefs.getString("skin", null))
+        if (style != Style.current) Style.current = style
+        if (skin != Skin.current) Skin.current = skin
+    }
+
+    fun saveTheme(name: String) {
+        val t = Theme(name.trim().ifBlank { "Theme ${_ui.value.themes.size + 1}" }, Style.current.encode(), Skin.current.encode())
+        val list = _ui.value.themes.filter { it.name != t.name } + t
+        uiPrefs.edit().putString("themes", Theme.save(list)).apply()
+        _ui.update { it.copy(themes = list) }; say("Saved \"${t.name}\".", 2_500)
+    }
+
+    /** Makes a theme the default look (and saves it as such). */
+    fun applyTheme(t: Theme) {
+        uiPrefs.edit().putString("style", t.style).putString("skin", t.skin).apply()
+        Style.current = Style.decode(t.style); Skin.current = Skin.decode(t.skin)
+        _ui.update { it.copy(hop = it.hop + 1) }; recompute()
+    }
+
+    fun deleteTheme(t: Theme) {
+        val list = _ui.value.themes - t
+        val map = _ui.value.contextThemes.filterValues { it != t.name }
+        uiPrefs.edit().putString("themes", Theme.save(list)).putString("ctx_themes", org.json.JSONObject(map as Map<*, *>).toString()).apply()
+        _ui.update { it.copy(themes = list, contextThemes = map) }; recompute()
+    }
+
+    /** Ties a theme to the current context (or unties it if it already was). */
+    fun toggleThemeForContext(t: Theme) {
+        val id = _ui.value.context?.id ?: return
+        val map = _ui.value.contextThemes.toMutableMap()
+        if (map[id] == t.name) map.remove(id) else map[id] = t.name
+        uiPrefs.edit().putString("ctx_themes", org.json.JSONObject(map as Map<*, *>).toString()).apply()
+        _ui.update { it.copy(contextThemes = map) }; recompute()
+    }
+
+    fun shareTheme(t: Theme) {
+        val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
+            .putExtra(android.content.Intent.EXTRA_TEXT, "My Moment theme \"${t.name}\". Paste this in Moment's search: ${t.code()}")
+        runCatching { getApplication<Application>().startActivity(android.content.Intent.createChooser(send, "Share theme").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    }
+
     /** The companion's colours (wardrobe). */
     fun setSkin(skin: Skin) {
         Skin.current = skin
-        uiPrefs.edit().putString("skin", skin.encode()).apply()
+        if (!editThemeOfContext { it.copy(skin = skin.encode()) }) uiPrefs.edit().putString("skin", skin.encode()).apply()
         _ui.update { it.copy(hop = it.hop + 1) }
     }
 
