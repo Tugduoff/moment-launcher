@@ -189,7 +189,7 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
 
             // Companion row.
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.clickable(remember { MutableInteractionSource() }, null) { vm.tapCompanion() }, contentAlignment = Alignment.Center) {
+                Box(Modifier.combinedClickable(remember { MutableInteractionSource() }, null, onLongClick = { vm.openWardrobe(true) }) { vm.tapCompanion() }, contentAlignment = Alignment.Center) {
                     if (ui.listening) ListeningRings(ui.voiceLevel, p.text)
                     Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, outfit = ui.outfit)
                 }

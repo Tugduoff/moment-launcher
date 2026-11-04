@@ -118,7 +118,7 @@ data class MomentContext(
             reason = o.optString("reason"),
             greeting = o.optString("greeting"),
             focus = o.optBoolean("focus", false) || o.optJSONArray("hide").strings().isNotEmpty(),
-            outfit = o.optString("outfit"),
+            outfit = cleanAccessory(o.optString("outfit")),
         )
     }
 }
@@ -142,3 +142,7 @@ fun JSONArray?.strings(): List<String> =
 
 inline fun <reified T : Enum<T>> enumOr(name: String?, default: T): T =
     enumValues<T>().firstOrNull { it.name.equals(name, ignoreCase = true) } ?: default
+
+/** "wearing a sporty sweatband" → "a sporty sweatband", so UI can say "Wears …". */
+fun cleanAccessory(s: String): String =
+    s.trim().replace(Regex("^(is\\s+)?(wearing|wears|wear|holding|holds|hold|playing|plays|with)\\s+", RegexOption.IGNORE_CASE), "")
