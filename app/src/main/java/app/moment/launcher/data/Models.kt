@@ -88,6 +88,8 @@ data class MomentContext(
     val bigButtons: Boolean = false,
     val hideSearch: Boolean = false,
     val focus: Boolean = false,
+    /** Accessory the companion wears in this context, drawn by Muse Image (e.g. "a tiny chef hat"). */
+    val outfit: String = "",
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id); put("name", name); put("chip", chip)
@@ -97,6 +99,7 @@ data class MomentContext(
         put("mood", mood.name.lowercase()); put("look", look.name.lowercase())
         put("reason", reason); put("greeting", greeting)
         put("focus", focus)
+        put("outfit", outfit)
     }
 
     companion object {
@@ -112,6 +115,7 @@ data class MomentContext(
             reason = o.optString("reason"),
             greeting = o.optString("greeting"),
             focus = o.optBoolean("focus", false) || o.optJSONArray("hide").strings().isNotEmpty(),
+            outfit = o.optString("outfit"),
         )
     }
 }

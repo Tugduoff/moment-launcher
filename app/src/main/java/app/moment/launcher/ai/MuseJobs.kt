@@ -47,6 +47,7 @@ object MuseJobs {
         "mood" to enum(MOODS, "How the companion looks: glasses to focus, seatbelt when driving, headphones for games/music, sleepy at night"),
         "look" to enum(LOOKS, "Home screen palette"),
         "greeting" to str("What the companion says when the context starts, max 8 words, friendly, no emoji"),
+        "outfit" to str("One small accessory the companion (a round yellow fruit character with a leaf) wears in this context, 3-8 words, never use the words tiny or small, e.g. 'a white chef hat', 'a red beret', 'a striped scarf'. No glasses, no headphones, nothing covering the face."),
     )
 
     private val proposalSchema = obj(

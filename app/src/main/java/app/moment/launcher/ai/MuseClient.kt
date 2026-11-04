@@ -62,6 +62,30 @@ object MuseClient {
         else URL(item.getString("url")).openStream().use { it.readBytes() }
     }
 
+    /** Edits [png] with Muse Image (multipart /images/edits) and returns the new image bytes. */
+    suspend fun editImage(png: ByteArray, prompt: String): ByteArray = withContext(Dispatchers.IO) {
+        check(hasKey) { "No MODEL_API_KEY in this build" }
+        val boundary = "moment" + System.nanoTime()
+        val conn = (URL("$BASE/images/edits").openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"; connectTimeout = 15_000; readTimeout = 120_000; doOutput = true
+            setRequestProperty("Authorization", "Bearer ${BuildConfig.MODEL_API_KEY}")
+            setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+        }
+        conn.outputStream.use { out ->
+            fun field(name: String, value: String) =
+                out.write("--$boundary\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n".toByteArray())
+            field("model", IMAGE_MODEL); field("prompt", prompt); field("output_format", "png")
+            out.write("--$boundary\r\nContent-Disposition: form-data; name=\"image\"; filename=\"body.png\"\r\nContent-Type: image/png\r\n\r\n".toByteArray())
+            out.write(png); out.write("\r\n--$boundary--\r\n".toByteArray())
+        }
+        val started = System.currentTimeMillis()
+        val code = conn.responseCode
+        val text = (if (code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+        if (code !in 200..299) { Log.e(TAG, "edit HTTP $code $text"); error("Muse Image $code: ${text.take(200)}") }
+        Log.d(TAG, "[image edit] ${System.currentTimeMillis() - started}ms")
+        Base64.decode(JSONObject(text).getJSONArray("data").getJSONObject(0).getString("b64_json"), Base64.DEFAULT)
+    }
+
     private fun post(path: String, body: JSONObject): JSONObject {
         check(hasKey) { "No MODEL_API_KEY in this build" }
         val conn = (URL(BASE + path).openConnection() as HttpURLConnection).apply {

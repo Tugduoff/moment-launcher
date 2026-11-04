@@ -129,7 +129,10 @@ private class Rig {
 }
 
 @Composable
-fun Companion(mood: Mood, size: Dp = 96.dp, modifier: Modifier = Modifier, speakKey: Int = 0, hopKey: Int = 0) {
+fun Companion(
+    mood: Mood, size: Dp = 96.dp, modifier: Modifier = Modifier, speakKey: Int = 0, hopKey: Int = 0,
+    outfit: androidx.compose.ui.graphics.ImageBitmap? = null,
+) {
     val rig = remember { Rig() }
     var frame by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(Unit) {
@@ -193,7 +196,8 @@ fun Companion(mood: Mood, size: Dp = 96.dp, modifier: Modifier = Modifier, speak
                 rotationZ = tilt
             }
         ) {
-            Image(painterResource(body(mood)), contentDescription = "Companion, ${mood.name.lowercase()}", Modifier.fillMaxSize())
+            if (outfit != null) Image(outfit, contentDescription = "Companion, dressed for this context", Modifier.fillMaxSize())
+            else Image(painterResource(body(mood)), contentDescription = "Companion, ${mood.name.lowercase()}", Modifier.fillMaxSize())
             Canvas(Modifier.fillMaxSize()) { drawFace(rig, mood, happy, br) }
         }
         Canvas(Modifier.fillMaxSize()) {

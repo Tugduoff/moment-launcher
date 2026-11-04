@@ -2,6 +2,7 @@ package app.moment.launcher
 
 import android.app.Application
 import android.util.Log
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.moment.launcher.ai.MuseClient
@@ -58,6 +59,8 @@ data class UiState(
     val apps: List<InstalledApp> = emptyList(),
     val museStatus: String = "",
     val hop: Int = 0,
+    val outfit: androidx.compose.ui.graphics.ImageBitmap? = null,
+    val dressing: Boolean = false,
     val speak: Int = 0,
 )
 
@@ -71,6 +74,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     private var lastContextId: String? = null
     private var greetingJob: Job? = null
     private var dismissStreak = 0
+    private val outfitCache = mutableMapOf<String, androidx.compose.ui.graphics.ImageBitmap?>()
 
     init {
         refreshApps()
@@ -116,6 +120,9 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         val pattern = ContextEngine.patternAt(s, store.visits(), user, store.dismissedPlaces())
             .takeIf { dismissStreak < 2 }
 
+        val outfit = if (ctx.builtIn) null else outfitCache.getOrPut(ctx.id) {
+            app.moment.launcher.ai.Outfits.load(getApplication(), ctx.id)?.asImageBitmap()
+        }
         val changed = ctx.id != lastContextId
         if (changed) {
             lastContextId = ctx.id
@@ -126,7 +133,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(
                 time = "%02d:%02d".format(c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE)),
                 date = SimpleDateFormat("EEEE d MMMM", Locale.ENGLISH).format(c.time),
-                signals = s, context = ctx, items = items, hiddenApps = hidden, pattern = pattern,
+                signals = s, context = ctx, items = items, hiddenApps = hidden, pattern = pattern, outfit = outfit,
             )
         }
         updateMood()
@@ -246,6 +253,28 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         lastContextId = null // force a greeting for the new context
         recompute()
         if (_ui.value.context?.id != p.context.id) say("Saved '${p.context.name}'. I'll show it when it fits.")
+        if (p.context.outfit.isNotBlank()) dress(p.context)
+    }
+
+    /** Muse Image dresses the companion for a new context; the face stays live on top. */
+    private fun dress(c: MomentContext) {
+        viewModelScope.launch {
+            delay(2_500)
+            _ui.update { it.copy(dressing = true) }
+            say("One sec, getting ready: ${c.outfit}.", 20_000)
+            runCatching { app.moment.launcher.ai.Outfits.generate(getApplication(), c.id, c.outfit) }
+                .onSuccess { bmp ->
+                    outfitCache[c.id] = bmp.asImageBitmap()
+                    _ui.update { it.copy(dressing = false, hop = it.hop + 1) }
+                    recompute()
+                    say("Ta-da! Dressed for ${c.name}.")
+                }
+                .onFailure { e ->
+                    Log.e("Moment", "outfit failed", e)
+                    _ui.update { it.copy(dressing = false) }
+                    say("Couldn't change outfits this time.")
+                }
+        }
     }
 
     fun dismissProposal() {
@@ -344,7 +373,8 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun resetAll() {
-        store.reset(); dismissStreak = 0
+        store.reset(); dismissStreak = 0; outfitCache.clear()
+        getApplication<Application>().filesDir.listFiles { f -> f.name.startsWith("outfit_") }?.forEach { it.delete() }
         _ui.update { it.copy(proposal = null, bubble = null, demo = DemoState()) }
         classifyAppsIfNeeded()
         recompute()
