@@ -96,6 +96,12 @@ data class UiState(
     val backdropMenu: Boolean = false,
     /** "What I can see": about me, memory, and the switches. */
     val showSenses: Boolean = false,
+    /** A conversation with the companion: lines as (fromUser, text), shown above it while [chatting]. */
+    val chat: List<Pair<Boolean, String>> = emptyList(),
+    val chatting: Boolean = false,
+    val dizzy: Int = 0,
+    /** Rain, stars and glow can be switched off with the small button by the clock. */
+    val effectsOff: Boolean = false,
     val aboutMe: String = "",
     val memory: List<String> = emptyList(),
     val sense: Map<String, Boolean> = emptyMap(),
@@ -144,6 +150,8 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     init {
         real.start(); body.start()
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { body.steps.collect { recompute() } }
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { body.shakes.collect { n -> if (n > 0) shaken() } }
+        _ui.update { it.copy(effectsOff = uiPrefs.getBoolean("effects_off", false)) }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { real.devices.collect { d -> _ui.update { it.copy(realCar = d.carName) }; recompute() } }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { while (true) { refreshWeather(); delay(30 * 60_000L) } }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { refreshApps() }
@@ -238,6 +246,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             st.thinking || st.dressing -> Mood.THINKING
             System.currentTimeMillis() < showOffUntil -> Mood.AWAKE
             st.proposal != null || st.plan != null -> Mood.TALKING
+            st.chatting -> Mood.AWAKE
             st.pattern != null -> Mood.AWAKE
             else -> ctxMood
         }
@@ -262,14 +271,37 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- Companion ---------------------------------------------------------------------------
 
+    /** Opens the conversation (tap the companion): it greets you, then the search bar talks to it. */
+    fun startChat() {
+        val st = _ui.value
+        if (st.chatting) return
+        val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        val hi = if (st.context?.id != "home" && st.context != null) whyText(st).ifBlank { "Hey!" }
+            else when { h < 5 -> "Still up?"; h < 12 -> "Morning! What's up?"; h < 18 -> "Hey! What's up?"; else -> "Evening! How was today?" }
+        _ui.update { it.copy(chatting = true, bubble = null, chat = if (it.chat.isEmpty()) listOf(false to hi) else it.chat, speak = it.speak + 1) }
+    }
+
+    fun shaken() {
+        _ui.update { it.copy(dizzy = it.dizzy + 1) }
+        say(listOf("Whoa… the room is spinning!", "Hey! Easy!", "Wheee… I'm dizzy.").random(), 3_000)
+    }
+
+    fun toggleEffects() {
+        val off = !_ui.value.effectsOff
+        uiPrefs.edit().putBoolean("effects_off", off).apply()
+        _ui.update { it.copy(effectsOff = off) }
+    }
+
+    fun endChat() = _ui.update { it.copy(chatting = false) }
+
     fun tapCompanion() {
         _ui.update { it.copy(hop = it.hop + 1) }
         val st = _ui.value
         when {
             st.thinking || st.proposal != null -> Unit
             st.pattern != null -> draftFromPattern()
-            st.context?.id == "home" -> say("All calm.")
-            else -> say(st.context?.reason?.ifBlank { null } ?: whyText(st))
+            st.chatting -> endChat()
+            else -> startChat()
         }
     }
 
@@ -350,15 +382,16 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun runAgent(request: String) {
-        _ui.update { it.copy(thinking = true, bubble = null, bubbleIsIdea = false) }
+        val history = _ui.value.chat
+        _ui.update { it.copy(thinking = true, bubble = null, bubbleIsIdea = false, chatting = true, chat = (it.chat + (true to request)).takeLast(20)) }
         updateMood()
         viewModelScope.launch {
             val started = System.currentTimeMillis()
-            runCatching { Agent.run(request, host) }
+            runCatching { Agent.run(request, host, history) }
                 .onSuccess { plan ->
                     _ui.update { it.copy(thinking = false, museStatus = "Muse Spark agent · ${plan.trace.size} steps · ${System.currentTimeMillis() - started} ms") }
-                    if (plan.steps.isEmpty()) say(plan.reply, 7_000)
-                    else { _ui.update { it.copy(plan = plan, bubble = null) } }
+                    if (plan.steps.isEmpty()) _ui.update { it.copy(chat = (it.chat + (false to plan.reply)).takeLast(20), speak = it.speak + 1) }
+                    else { _ui.update { it.copy(plan = plan, bubble = null, chatting = false, chat = (it.chat + (false to plan.reply)).takeLast(20)) } }
                 }
                 .onFailure { e ->
                     Log.e("Moment", "agent failed, falling back", e)

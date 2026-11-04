@@ -116,10 +116,12 @@ private fun Option(icon: String, label: String, p: Palette, dim: Boolean = false
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BackdropSheet(vm: MomentViewModel, ui: UiState) {
+    // Registered before the early return: the sheet closes while the photo picker is open,
+    // and the result must still arrive.
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) vm.useMyPhoto(uri) }
     if (!ui.backdropMenu) return
     val p = palette(Look.CREAM)
     var wish by remember { mutableStateOf("") }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) vm.useMyPhoto(uri) }
     ModalBottomSheet(onDismissRequest = { vm.openBackdropMenu(false) }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SHEET) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp).padding(bottom = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Background", 28, p.text, weight = 500)

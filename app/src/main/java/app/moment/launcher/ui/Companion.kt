@@ -37,6 +37,7 @@ import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
+import kotlin.math.cos
 import kotlin.random.Random
 
 /*
@@ -78,6 +79,9 @@ private class Rig {
     var moodSince = 0f
     var hopStart = -10f
     var speakStart = -10f
+    var dizzyStart = -10f
+    /** 1 right after a shake, fading to 0 over ~3 s. */
+    val dizzy get() = ((t - dizzyStart) / 3f).let { if (it in 0f..1f) 1f - it else 0f }
 
     fun step(now: Float, mood: Mood) {
         val dt = if (t == 0f) 0f else min(0.05f, now - t)
@@ -131,7 +135,7 @@ private class Rig {
 @Composable
 fun Companion(
     mood: Mood, size: Dp = 96.dp, modifier: Modifier = Modifier, speakKey: Int = 0, hopKey: Int = 0,
-    outfit: androidx.compose.ui.graphics.ImageBitmap? = null,
+    outfit: androidx.compose.ui.graphics.ImageBitmap? = null, dizzyKey: Int = 0,
 ) {
     val rig = remember { Rig() }
     var frame by remember { mutableFloatStateOf(0f) }
@@ -148,6 +152,7 @@ fun Companion(
     }
     LaunchedEffect(hopKey) { if (hopKey > 0) rig.hopStart = rig.t }
     LaunchedEffect(speakKey) { if (speakKey > 0) rig.speakStart = rig.t }
+    LaunchedEffect(dizzyKey) { if (dizzyKey > 0) rig.dizzyStart = rig.t }
 
     rig.step(frame, mood)
     val t = rig.t
@@ -192,8 +197,11 @@ fun Companion(
                 transformOrigin = TransformOrigin(0.5f, 0.92f)
                 scaleX = breatheX * pop.value * hopSX
                 scaleY = breatheY * (2f - pop.value) * hopSY
+                // Dizzy after a shake: a wobble that slows down as it wears off.
+                val dz = rig.dizzy
                 translationY = (bob + hopY) * density
-                rotationZ = tilt
+                translationX = sin(t * 7f) * 5f * dz * density
+                rotationZ = tilt + sin(t * 9f) * 14f * dz
             }
         ) {
             if (outfit != null) Image(outfit, contentDescription = "Companion, dressed for this context", Modifier.fillMaxSize())
@@ -201,13 +209,33 @@ fun Companion(
             Canvas(Modifier.fillMaxSize()) { drawFace(rig, mood, happy, br) }
         }
         Canvas(Modifier.fillMaxSize()) {
-            when (mood) {
+            if (rig.dizzy > 0f) drawStars(t, rig.dizzy)
+            else when (mood) {
                 Mood.ASLEEP -> drawZs(t)
                 Mood.THINKING -> drawDots(t)
                 Mood.SLEEPY -> drawDrop(t)
                 else -> Unit
             }
         }
+    }
+}
+
+/** Little stars circling over its head after a shake. */
+private fun DrawScope.drawStars(t: Float, amount: Float) {
+    val u = size.width
+    for (i in 0 until 3) {
+        val a = t * 3.2f + i * (2f * PI.toFloat() / 3f)
+        val c = Offset(u * 0.5f + cos(a) * u * 0.26f, u * 0.2f + sin(a) * u * 0.06f)
+        val r = u * 0.03f * (0.6f + 0.4f * amount)
+        val star = Path().apply {
+            for (k in 0 until 10) {
+                val rr = if (k % 2 == 0) r else r * 0.45f; val ang = -PI.toFloat() / 2 + k * PI.toFloat() / 5
+                val x = c.x + cos(ang) * rr; val y = c.y + sin(ang) * rr
+                if (k == 0) moveTo(x, y) else lineTo(x, y)
+            }
+            close()
+        }
+        drawPath(star, Color(0xFFF2B630).copy(alpha = amount.coerceIn(0f, 1f)))
     }
 }
 
@@ -238,6 +266,25 @@ private fun DrawScope.drawFace(rig: Rig, mood: Mood, happy: Boolean, breath: Flo
     val mx = u * MOUTH_X; val my = u * MOUTH_Y
 
     // Eyes.
+    if (rig.dizzy > 0.08f) {
+        // Spiral eyes and a wavy mouth while the room spins.
+        fun spiral(cx: Float, cy: Float, dir: Float) {
+            val p = Path(); val turns = 2.2f; val r0 = u * 0.045f
+            for (i in 0..40) {
+                val q = i / 40f; val a = dir * (q * turns * 2f * PI.toFloat() + t * 6f); val r = r0 * q
+                val x = cx + cos(a) * r; val y = cy + sin(a) * r
+                if (i == 0) p.moveTo(x, y) else p.lineTo(x, y)
+            }
+            drawPath(p, INK, style = stroke)
+        }
+        spiral(lx, ey, 1f); spiral(rx, ey, -1f)
+        val wave = Path().apply {
+            moveTo(mx - u * 0.05f, my)
+            for (i in 1..8) { val x = mx - u * 0.05f + u * 0.1f * i / 8f; lineTo(x, my + sin(i * 1.6f + t * 8f) * u * 0.008f) }
+        }
+        drawPath(wave, INK, style = stroke)
+        return
+    }
     when {
         happy -> { closedArc(lx, ey, up = true); closedArc(rx, ey, up = true) }
         mood == Mood.ASLEEP -> { closedArc(lx, ey + u * 0.01f, up = false); closedArc(rx, ey + u * 0.01f, up = false) }

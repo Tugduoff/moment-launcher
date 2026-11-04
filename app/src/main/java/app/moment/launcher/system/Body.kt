@@ -26,16 +26,32 @@ class Body(private val ctx: Context) : SensorEventListener {
     /** Steps since midnight, or null when there is no step counter or no permission yet. */
     val steps: StateFlow<Int?> = _steps
     private var listening = false
+    private val _shakes = MutableStateFlow(0)
+    /** Counts shakes (a couple of strong jolts within half a second). */
+    val shakes: StateFlow<Int> = _shakes
+    private var jolts = 0; private var firstJolt = 0L; private var lastShake = 0L
 
     /** Starts listening; call again after the ACTIVITY_RECOGNITION permission is granted. */
     fun start() {
-        if (listening) return
         val sm = ctx.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        if (!accel) sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let { accel = sm.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
+        if (listening) return
         val counter = sm.getDefaultSensor(Sensor.TYPE_STEP_COUNTER) ?: return
         listening = runCatching { sm.registerListener(this, counter, SensorManager.SENSOR_DELAY_NORMAL) }.getOrDefault(false)
     }
 
+    private var accel = false
+
     override fun onSensorChanged(e: SensorEvent) {
+        if (e.sensor.type == Sensor.TYPE_ACCELEROMETER) {
+            val g = kotlin.math.sqrt(e.values[0] * e.values[0] + e.values[1] * e.values[1] + e.values[2] * e.values[2]) / 9.81f
+            val now = System.currentTimeMillis()
+            if (g > 2.3f) {
+                if (now - firstJolt > 600) { firstJolt = now; jolts = 0 }
+                if (++jolts >= 3 && now - lastShake > 2_500) { lastShake = now; jolts = 0; _shakes.value++ }
+            }
+            return
+        }
         // The counter counts since boot: keep the first value seen today as the baseline.
         val total = e.values[0].toInt()
         val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())

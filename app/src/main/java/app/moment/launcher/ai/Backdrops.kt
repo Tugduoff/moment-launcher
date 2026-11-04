@@ -20,9 +20,12 @@ object Backdrops {
 
     /** One of your own photos as the background: scaled down to screen size and kept on the phone. */
     suspend fun fromPhoto(ctx: Context, key: String, uri: android.net.Uri): Bitmap = withContext(Dispatchers.IO) {
-        val src = ctx.contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it) }
-        val scale = minOf(1f, 1600f / maxOf(src.width, src.height))
-        val bmp = if (scale < 1f) Bitmap.createScaledBitmap(src, (src.width * scale).toInt(), (src.height * scale).toInt(), true) else src
+        // ImageDecoder applies the photo's rotation and decodes straight to screen size (no huge bitmap).
+        val bmp = android.graphics.ImageDecoder.decodeBitmap(android.graphics.ImageDecoder.createSource(ctx.contentResolver, uri)) { d, info, _ ->
+            val scale = minOf(1f, 1600f / maxOf(info.size.width, info.size.height))
+            d.setTargetSize((info.size.width * scale).toInt().coerceAtLeast(1), (info.size.height * scale).toInt().coerceAtLeast(1))
+            d.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE
+        }
         file(ctx, key).outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) }
         bmp
     }

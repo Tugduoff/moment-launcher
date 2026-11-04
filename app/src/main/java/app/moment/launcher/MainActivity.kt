@@ -83,6 +83,7 @@ class MainActivity : ComponentActivity() {
                 "wardrobe" -> vm.openWardrobe(arg == "1")
                 "use" -> vm.useContext(arg)
                 "senses" -> vm.openSenses(arg != "0")
+                "shake" -> vm.shaken()
                 "paint" -> vm.ui.value.context?.let { vm.paintBackdrop(it, arg.ifBlank { null }) }
                 "steps" -> vm.setDemo { it.copy(steps = arg.toIntOrNull()) }
                 "battery" -> vm.setDemo { it.copy(battery = arg.toIntOrNull()) }

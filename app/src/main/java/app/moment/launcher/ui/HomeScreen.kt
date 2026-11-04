@@ -144,9 +144,10 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
     var focused by remember { androidx.compose.runtime.mutableStateOf(false) }
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     fun buzz() = haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-    val searching = focused || ui.query.isNotBlank()
-    BackHandler(enabled = searching || ui.proposal != null || ui.plan != null) {
-        if (searching) { vm.setQuery(""); focus.clearFocus() } else if (ui.plan != null) vm.dismissPlan() else vm.dismissProposal()
+    val searching = (focused || ui.query.isNotBlank()) && !ui.chatting
+    BackHandler(enabled = searching || ui.chatting || ui.proposal != null || ui.plan != null) {
+        if (ui.chatting) { vm.setQuery(""); focus.clearFocus(); vm.endChat() }
+        else if (searching) { vm.setQuery(""); focus.clearFocus() } else if (ui.plan != null) vm.dismissPlan() else vm.dismissProposal()
     }
 
     val swipeMin = with(androidx.compose.ui.platform.LocalDensity.current) { 72.dp.toPx() }
@@ -171,7 +172,7 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                 .62f to veil.copy(alpha = .55f), .78f to veil.copy(alpha = .86f), 1f to veil.copy(alpha = .94f),
             )))
         }
-        when (ctx.look) {
+        if (!ui.effectsOff) when (ctx.look) {
             Look.GAME -> GameGlow()
             Look.RAIN -> RainOverlay()
             Look.NIGHT -> NightStars()
@@ -195,6 +196,13 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         Text(ui.date, 17, p.text2)
                         StatusGlyphs(ui, p)
+                        // Rain, stars or glow on screen: one small button turns them off (and back on).
+                        if (ctx.look == Look.RAIN || ctx.look == Look.NIGHT || ctx.look == Look.GAME) {
+                            Spacer(Modifier.weight(1f))
+                            Box(Modifier.size(32.dp).clickable { vm.toggleEffects() }, contentAlignment = Alignment.Center) {
+                                LineIcon(Icons.SPARKLE, p.text2.copy(alpha = if (ui.effectsOff) .35f else .8f), 18.dp)
+                            }
+                        }
                     }
                 }
             }
@@ -202,6 +210,15 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                 // Searching: results take the whole top of the screen; clock and companion step aside.
                 Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = 16.dp)) {
                     SearchResults(vm, ui, p)
+                }
+            } else if (ui.chatting) {
+                // Talking: the conversation takes the space of the rows, newest at the bottom.
+                ChatThread(ui, p, Modifier.weight(1f)) { vm.endChat() }
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.combinedClickable(remember { MutableInteractionSource() }, null, onLongClick = { vm.openWardrobe(true) }) { vm.tapCompanion() }) {
+                        Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, outfit = ui.outfit, dizzyKey = ui.dizzy)
+                    }
                 }
             } else {
                 Spacer(Modifier.weight(1f))
@@ -239,7 +256,7 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.combinedClickable(remember { MutableInteractionSource() }, null, onLongClick = { vm.openWardrobe(true) }) { vm.tapCompanion() }, contentAlignment = Alignment.Center) {
                         if (ui.listening) ListeningRings(ui.voiceLevel, p.text)
-                        Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, outfit = ui.outfit)
+                        Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, outfit = ui.outfit, dizzyKey = ui.dizzy)
                     }
                     Spacer(Modifier.width(4.dp))
                     AnimatedContent(
@@ -264,6 +281,31 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
 }
 
 // ---- Pieces ------------------------------------------------------------------------------------
+
+/** The conversation with the companion: your lines on the right, its lines on the left. */
+@Composable
+private fun ChatThread(ui: UiState, p: Palette, modifier: Modifier, onClose: () -> Unit) {
+    val scroll = rememberScrollState()
+    androidx.compose.runtime.LaunchedEffect(ui.chat.size, ui.thinking) { scroll.animateScrollTo(scroll.maxValue) }
+    Box(modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().align(Alignment.BottomStart).verticalScroll(scroll).padding(top = 40.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            ui.chat.forEach { (me, text) ->
+                val shape = if (me) RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp) else RoundedCornerShape(20.dp, 20.dp, 20.dp, 6.dp)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (me) Arrangement.End else Arrangement.Start) {
+                    Box(Modifier.fillMaxWidth(.82f), contentAlignment = if (me) Alignment.CenterEnd else Alignment.CenterStart) {
+                        Text(text, 16, if (me) p.accentOn else p.text, lineHeight = 22,
+                            modifier = Modifier.background(if (me) p.accentFill else p.card, shape).border(if (me) 0.dp else 1.dp, p.stroke, shape)
+                                .padding(horizontal = 14.dp, vertical = 10.dp))
+                    }
+                }
+            }
+            if (ui.thinking) Text("…", 22, p.text2, modifier = Modifier.padding(start = 12.dp))
+        }
+        Box(Modifier.align(Alignment.TopEnd).size(36.dp).clickable(onClick = onClose), contentAlignment = Alignment.Center) {
+            LineIcon(Icons.CLOSE, p.text2, 18.dp)
+        }
+    }
+}
 
 private object Glyph {
     const val SUN = "M12 8A4 4 0 1 1 12 16A4 4 0 1 1 12 8Z M12 2V4 M12 20V22 M4.9 4.9L6.3 6.3 M17.7 17.7L19.1 19.1 M2 12H4 M20 12H22 M4.9 19.1L6.3 17.7 M17.7 6.3L19.1 4.9"
@@ -532,7 +574,7 @@ private fun SearchBar(vm: MomentViewModel, ui: UiState, p: Palette, onFocus: (Bo
         LineIcon(Icons.SEARCH, p.text, 20.dp, modifier = Modifier.alpha(.6f))
         Spacer(Modifier.width(10.dp))
         Box(Modifier.weight(1f)) {
-            if (ui.query.isEmpty()) Text("Search apps, or ask", 16, p.text2)
+            if (ui.query.isEmpty()) Text(if (ui.chatting) "Talk to me…" else "Search apps, or ask", 16, p.text2)
             BasicTextField(
                 ui.query, vm::setQuery, singleLine = true,
                 textStyle = TextStyle(fontFamily = DmSans, fontSize = 16.sp, color = p.text),
@@ -541,7 +583,7 @@ private fun SearchBar(vm: MomentViewModel, ui: UiState, p: Palette, onFocus: (Bo
                 keyboardActions = KeyboardActions(onSend = {
                     val q = ui.query.trim()
                     val exact = ui.results.firstOrNull { it.label.equals(q, true) }
-                    val quick = exact ?: ui.results.firstOrNull()?.takeIf { q.split(' ').size <= 2 }
+                    val quick = if (ui.chatting) null else exact ?: ui.results.firstOrNull()?.takeIf { q.split(' ').size <= 2 }
                     if (quick != null) vm.launch(quick) else vm.ask(ui.query)
                     focus.clearFocus()
                 }),

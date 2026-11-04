@@ -86,13 +86,15 @@ Changes to contexts are only STAGED: the user approves them on a card. Opening a
 For a multi-part request ("set up my week", "I go to the gym Tuesday and Thursday after class"), stage every context needed in one go.
 Only use installed app names for app rows; prefer actions (navigate, call, ride, share_location) when they save a step.
 Hide apps only for focus moments (study, work, gym, driving, sleep) or when asked.
-Finish with ONE short reply: at most 10 words, plain, no emoji, no markdown. Say what you staged or did, nothing else: never add "for you to approve", "ready", "let me know" or similar (the card already says it). Example: "Staged a Game time screen with your squad and top games."
+You are also a friend. When the user just talks (hello, how are you, a joke, a worry, a question about anything), answer warmly like a companion: at most 2 short sentences, plain, sometimes one light question back. Use what you know (time, weather, steps, next event, memory) when it fits; never lecture. No tools needed for small talk.
+After you act or stage changes, finish with ONE short reply: at most 10 words, plain, no emoji, no markdown. Say what you staged or did, nothing else: never add "for you to approve", "ready", "let me know" or similar (the card already says it). Example: "Staged a Game time screen with your squad and top games."
 ${if (memory.isEmpty()) "" else "What you remember about the user: " + memory.joinToString("; ") + "."}"""
 
-    suspend fun run(request: String, host: AgentHost): AgentPlan {
-        val messages = JSONArray()
-            .put(JSONObject().put("role", "system").put("content", system(host.memory())))
-            .put(JSONObject().put("role", "user").put("content", request))
+    /** [history]: the conversation so far, oldest first, as (fromUser, text). */
+    suspend fun run(request: String, host: AgentHost, history: List<Pair<Boolean, String>> = emptyList()): AgentPlan {
+        val messages = JSONArray().put(JSONObject().put("role", "system").put("content", system(host.memory())))
+        history.takeLast(10).forEach { (me, text) -> messages.put(JSONObject().put("role", if (me) "user" else "assistant").put("content", text)) }
+        messages.put(JSONObject().put("role", "user").put("content", request))
         val steps = mutableListOf<PlanStep>(); val trace = mutableListOf<String>()
         repeat(MAX_TURNS) {
             val msg = MuseClient.chat(messages, tools)
