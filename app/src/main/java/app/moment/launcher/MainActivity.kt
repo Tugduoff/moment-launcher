@@ -20,6 +20,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        getSharedPreferences("moment_ui", MODE_PRIVATE).getInt("ground", 0).takeIf { it != 0 }
+            ?.let { window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(it)) }
         enableEdgeToEdge()
         // Steps come from the phone's own step counter; it needs the activity permission (asked once).
         val activity = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ok -> if (ok) vm.body.start() }
@@ -27,8 +29,33 @@ class MainActivity : ComponentActivity() {
             checkSelfPermission(android.Manifest.permission.ACTIVITY_RECOGNITION) != android.content.pm.PackageManager.PERMISSION_GRANTED
         ) activity.launch(android.Manifest.permission.ACTIVITY_RECOGNITION)
         setContent {
+            // Widgets: bind (asking the user if Android requires it), then the widget's own setup screen.
+            val pending = androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(-1) }
+            val configureWidget = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
+                if (r.resultCode == RESULT_OK) vm.widgetAdded(pending.intValue) else vm.widgets.discard(pending.intValue)
+            }
+            fun finishWidget(id: Int) {
+                val info = vm.widgets.manager.getAppWidgetInfo(id)
+                if (info?.configure != null) configureWidget.launch(android.content.Intent(android.appwidget.AppWidgetManager.ACTION_APPWIDGET_CONFIGURE)
+                    .setComponent(info.configure).putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_ID, id))
+                else vm.widgetAdded(id)
+            }
+            val bind = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { r ->
+                if (r.resultCode == RESULT_OK) finishWidget(pending.intValue) else vm.widgets.discard(pending.intValue)
+            }
             val ui by vm.ui.collectAsStateWithLifecycle()
             val dark = ui.context?.let { palette(it.look).dark } ?: false
+            // The window behind Compose takes the context's ground colour, so a transition back home
+            // (from recents, from an app) shows the right colour instead of a flash of the system wallpaper.
+            val ground = when (ui.context?.look) {
+                app.moment.launcher.data.Look.CAR -> 0xFF121317.toInt(); app.moment.launcher.data.Look.NIGHT -> 0xFF0E1428.toInt()
+                app.moment.launcher.data.Look.GAME -> 0xFF6A2BFF.toInt(); app.moment.launcher.data.Look.RAIN -> 0xFF7E8CA2.toInt()
+                app.moment.launcher.data.Look.STUDY -> 0xFFECEFF4.toInt(); else -> 0xFFF7F4EE.toInt()
+            }
+            LaunchedEffect(ground) {
+                window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(ground))
+                getSharedPreferences("moment_ui", MODE_PRIVATE).edit().putInt("ground", ground).apply()
+            }
             LaunchedEffect(dark) {
                 val style = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
                 else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
@@ -42,8 +69,18 @@ class MainActivity : ComponentActivity() {
             app.moment.launcher.ui.EditRowSheet(vm, ui)
             app.moment.launcher.ui.BackdropSheet(vm, ui)
             app.moment.launcher.ui.SensesSheet(vm, ui)
+            app.moment.launcher.ui.ContactPickerSheet(vm, ui)
+            app.moment.launcher.ui.StyleSheet(vm, ui)
             app.moment.launcher.ui.FocusGuardSheet(vm, ui)
             app.moment.launcher.ui.Onboarding(vm, ui)
+            app.moment.launcher.ui.WidgetPickerSheet(vm, ui) { info ->
+                vm.openWidgetPicker(false)
+                val id = vm.widgets.allocate(); pending.intValue = id
+                if (vm.widgets.bind(id, info)) finishWidget(id)
+                else bind.launch(android.content.Intent(android.appwidget.AppWidgetManager.ACTION_APPWIDGET_BIND)
+                    .putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+                    .putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider))
+            }
         }
     }
 
@@ -89,9 +126,14 @@ class MainActivity : ComponentActivity() {
                 "steps" -> vm.setDemo { it.copy(steps = arg.toIntOrNull()) }
                 "battery" -> vm.setDemo { it.copy(battery = arg.toIntOrNull()) }
                 "contexts" -> vm.openContexts(arg == "1")
+                "effect" -> arg.toIntOrNull()?.let { vm.setStyle(app.moment.launcher.ui.Style.current.copy(effect = it)) }
+                "style" -> vm.openStyle(arg != "0")
             }
         }
     }
+
+    override fun onStart() { super.onStart(); vm.widgets.startListening(); vm.refreshWidgets() }
+    override fun onStop() { super.onStop(); vm.widgets.stopListening() }
 
     override fun onResume() {
         super.onResume()

@@ -8,6 +8,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +44,14 @@ private val PAGES = listOf(
     Triple(Mood.THINKING, "I learn your moments", "When I notice a pattern, I suggest a context on a card. Nothing changes without your OK."),
     Triple(Mood.TALKING, "Talk to me", "Type or hold the mic: \"open Spotify\", \"at the library, hide Instagram\", \"put on a hat\"."),
     Triple(Mood.GLASSES, "Two shortcuts", "Swipe sideways for your contexts. Long-press me for my wardrobe."),
+    Triple(Mood.AWAKE, "Your first moment", "Nothing is set up yet. Tell me one moment of your week, or pick one."),
+)
+
+private val FIRST_MOMENTS = listOf(
+    "At the library, hide Instagram and TikTok",
+    "Gym on Tuesday and Thursday evenings",
+    "In the car: maps, music and calls",
+    "Late evenings: wind down, no social apps",
 )
 
 /** First run: four short pages with the companion, then an offer to make Moment the home screen. */
@@ -51,6 +61,8 @@ fun Onboarding(vm: MomentViewModel, ui: UiState) {
     val p = palette(Look.CREAM)
     val ctx = LocalContext.current
     var page by remember { mutableIntStateOf(0) }
+    var first by remember { androidx.compose.runtime.mutableStateOf("") }
+    fun create() { val t = first.trim(); vm.finishOnboarding(); if (t.isNotBlank()) vm.ask(t) }
     val swipeMin = with(androidx.compose.ui.platform.LocalDensity.current) { 56.dp.toPx() }
     Box(Modifier.fillMaxSize().background(p.bg).pointerInput(Unit) {
         // Swipe like a carousel: towards the left for the next page, towards the right to go back.
@@ -72,6 +84,26 @@ fun Onboarding(vm: MomentViewModel, ui: UiState) {
                 Text(title, 34, p.text, weight = 500, lineHeight = 40)
                 Spacer(Modifier.height(12.dp))
                 Text(body, 18, p.text2, lineHeight = 26)
+                if (i == PAGES.lastIndex) {
+                    Spacer(Modifier.height(20.dp))
+                    val shape = androidx.compose.foundation.shape.RoundedCornerShape(22.dp)
+                    androidx.compose.foundation.text.BasicTextField(
+                        first, { first = it },
+                        textStyle = androidx.compose.ui.text.TextStyle(color = p.text, fontSize = androidx.compose.ui.unit.TextUnit(17f, androidx.compose.ui.unit.TextUnitType.Sp), fontFamily = DmSans),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(p.text),
+                        modifier = Modifier.fillMaxWidth().background(p.pill, shape)
+                            .border(1.dp, p.stroke, shape).padding(horizontal = 18.dp, vertical = 14.dp),
+                        decorationBox = { inner -> Box { if (first.isEmpty()) Text("At the gym, hide YouTube…", 17, p.text2); inner() } },
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FIRST_MOMENTS.forEach { m ->
+                            Text(m, 15, if (first == m) p.text else p.text2, weight = if (first == m) 500 else 400,
+                                modifier = Modifier.border(1.dp, if (first == m) p.text else p.stroke, shape)
+                                    .clickable { first = m }.padding(horizontal = 14.dp, vertical = 8.dp))
+                        }
+                    }
+                }
             }
         }
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -83,10 +115,10 @@ fun Onboarding(vm: MomentViewModel, ui: UiState) {
                     Button("Next", Btn.Primary, p) { page++ }
                     Button("Skip", Btn.Ghost, p) { vm.finishOnboarding() }
                 } else {
-                    Button("Let's go", Btn.Primary, p) { vm.finishOnboarding() }
+                    Button(if (first.isBlank()) "Later" else "Create it", if (first.isBlank()) Btn.Ghost else Btn.Primary, p) { create() }
                     Button("Set as home screen", Btn.Secondary, p) {
                         runCatching { ctx.startActivity(Intent(Settings.ACTION_HOME_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                        vm.finishOnboarding()
+                        create()
                     }
                 }
             }

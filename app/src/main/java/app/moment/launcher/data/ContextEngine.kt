@@ -8,10 +8,11 @@ object ContextEngine {
 
     val DISTRACTING_DEFAULTS = listOf("Instagram", "TikTok", "YouTube", "Snapchat", "X", "Facebook", "Reddit")
 
-    fun home(s: Signals) = MomentContext(
+    /** Home: what shows when no context applies. Plain apps until the user makes it theirs. */
+    fun home(s: Signals, demo: Boolean = false) = MomentContext(
         id = "home", name = "Home", chip = "", trigger = Trigger(), builtIn = true,
         mood = Mood.ASLEEP, look = Look.CREAM,
-        items = listOf(
+        items = if (!demo) listOf(NowItem("Messages"), NowItem("Calendar"), NowItem("Camera")) else listOf(
             NowItem("Messages"),
             NowItem("Spotify", if (s.minuteOfDay / 60 in 11..14) "Lunch mix" else "Morning mix", "music", "Spotify"),
             NowItem("Calendar", "9:00 Algorithms"),
@@ -72,8 +73,15 @@ object ContextEngine {
         items = listOf(NowItem("Spotify", "Rainy day mix", "music", "Spotify"), NowItem("Notes"), NowItem("Books")),
     )
 
-    /** Picks the context for these signals. Order = priority. */
-    fun resolve(s: Signals, user: List<MomentContext>, hidden: List<String>): MomentContext {
+    /** The sample contexts (study, driving, game, rain, late night): only when turned on in the demo panel. */
+    fun demoContexts(hidden: List<String>) = listOf(study(hidden), driving, game, rain, nightOut)
+
+    /**
+     * Picks the context for these signals. Order = priority. By default only the user's own
+     * contexts exist; the built-in samples join in when [demo] is on.
+     */
+    fun resolve(s: Signals, user: List<MomentContext>, hidden: List<String>, demo: Boolean = false): MomentContext {
+        if (!demo) return user.firstOrNull { matches(it.trigger, s) } ?: home(s)
         val hour = s.minuteOfDay / 60
         if (s.carBluetooth) return driving
         user.firstOrNull { matches(it.trigger, s) }?.let { return it }
@@ -81,7 +89,7 @@ object ContextEngine {
         if (s.place == Place.AWAY && inHours(hour, 22, 5)) return nightOut
         if (s.headphones && inHours(hour, 19, 2)) return game
         if (s.raining) return rain
-        return home(s)
+        return home(s, demo = true)
     }
 
     fun matches(t: Trigger, s: Signals): Boolean {

@@ -52,7 +52,7 @@ import app.moment.launcher.data.Look
 
 private val SENSES = listOf(
     Triple("calendar", "Calendar", "Your next event as a row, and a nudge 10 min before"),
-    Triple("contacts", "Favourite contacts", "\"Call a friend\" calls your starred people"),
+    Triple("contacts", "Favourite contacts", "\"Call a friend\" calls them, and you can ask me to call anyone"),
     Triple("location", "Approximate location", "Home or away, and the weather where you are"),
 )
 
@@ -117,6 +117,10 @@ fun SensesSheet(vm: MomentViewModel, ui: UiState) {
                             else { asking = key; perm.launch(SENSE_PERMISSIONS.getValue(key)) }
                         }, colors = SwitchDefaults.colors(checkedTrackColor = p.text, checkedThumbColor = Color(0xFFF7F4EE)))
                     }
+                    if (key == "contacts" && on) Text(
+                        if (ui.favourites.isEmpty()) "Choose your favourites" else "Favourites: " + ui.favourites.joinToString(", ") { it.substringBefore(' ') } + " · Edit",
+                        14, p.text, underline = true, maxLines = 2,
+                        modifier = Modifier.clickable { vm.openContactPicker(true) }.padding(start = 4.dp, top = 2.dp, bottom = 4.dp))
                     if (key == "location" && on) Text(if (ui.homeSaved) "Home is set. Set it here again" else "Set home here", 14, p.text, underline = true,
                         modifier = Modifier.clickable { vm.saveHomeHere() }.padding(start = 4.dp, top = 2.dp, bottom = 4.dp))
                 }
@@ -132,3 +136,42 @@ private val SENSE_PERMISSIONS = mapOf(
     "contacts" to android.Manifest.permission.READ_CONTACTS,
     "location" to android.Manifest.permission.ACCESS_COARSE_LOCATION,
 )
+
+/** Every contact, searchable; tap to make one a favourite ("Call a friend", the agent's friends). */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun ContactPickerSheet(vm: MomentViewModel, ui: UiState) {
+    if (!ui.contactPicker) return
+    val p = palette(Look.CREAM)
+    var q by remember { mutableStateOf("") }
+    val shape = RoundedCornerShape(22.dp)
+    androidx.compose.material3.ModalBottomSheet(
+        onDismissRequest = { vm.openContactPicker(false) },
+        sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = Color(0xFFF7F4EE),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp).imePadding().navigationBarsPadding()) {
+            Text("Favourites", 28, p.text, weight = 500)
+            Spacer(Modifier.height(10.dp))
+            Box(Modifier.fillMaxWidth().background(p.card, shape).border(1.dp, p.stroke, shape).padding(horizontal = 16.dp, vertical = 12.dp)) {
+                if (q.isEmpty()) Text("Search contacts", 16, p.text2)
+                BasicTextField(q, { q = it }, cursorBrush = SolidColor(p.text), singleLine = true,
+                    textStyle = TextStyle(fontFamily = DmSans, fontSize = 16.sp, color = p.text), modifier = Modifier.fillMaxWidth())
+            }
+            Spacer(Modifier.height(8.dp))
+            if (ui.allContacts.isEmpty()) Text("Loading your contacts…", 15, p.text2, modifier = Modifier.padding(vertical = 12.dp))
+            val shown = ui.allContacts.filter { q.isBlank() || it.contains(q.trim(), true) }
+                .sortedByDescending { it in ui.favourites }
+            androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 480.dp)) {
+                items(shown.size) { i ->
+                    val name = shown[i]; val fav = name in ui.favourites
+                    Row(Modifier.fillMaxWidth().clickable { vm.toggleFavourite(name) }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(name, 17, p.text, weight = if (fav) 500 else 400, maxLines = 1, modifier = Modifier.weight(1f))
+                        Box(Modifier.size(22.dp).background(if (fav) p.text else Color.Transparent, CircleShape).border(1.5.dp, if (fav) p.text else p.stroke, CircleShape))
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+    }
+}

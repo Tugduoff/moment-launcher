@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -37,6 +39,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -141,6 +144,9 @@ fun BackdropSheet(vm: MomentViewModel, ui: UiState) {
             Option(Icons.SPARKLE, "Paint again", p) { vm.repaint(null) }
             Option(PHOTO, "Use my photo", p) { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
             if (ui.backdrop != null) Option(Icons.CLOSE, "Remove", p) { vm.removeBackdrop() }
+            Option(Icons.SPARKLE, "Style: font and clock", p) { vm.openStyle(true) }
+            if (ui.widgetIds.size < app.moment.launcher.system.Widgets.MAX) Option(PLUS, "Add a widget", p) { vm.openWidgetPicker(true) }
+            ui.widgetIds.forEach { id -> Option(Icons.CLOSE, "Remove widget: ${vm.widgets.label(id)}", p) { vm.removeWidget(id) } }
         }
     }
 }
@@ -164,6 +170,109 @@ fun FocusGuardSheet(vm: MomentViewModel, ui: UiState) {
             Option(Icons.LOCK, "Stay focused", p) { vm.guardCancel() }
             val sec = ui.guardSeconds
             Option(Icons.CHEVRON, if (sec == null) "Open in 10 s" else "Opening in $sec s…", p, dim = sec != null) { if (sec == null) vm.guardOpen() }
+        }
+    }
+}
+
+/** A widget's preview picture (or its app icon when it has none), drawn off the main thread. */
+@Composable
+private fun WidgetPreview(info: android.appwidget.AppWidgetProviderInfo, modifier: Modifier) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val img by androidx.compose.runtime.produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, info.provider) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                val d = info.loadPreviewImage(ctx, 0) ?: info.loadIcon(ctx, 0)
+                val w = d.intrinsicWidth.takeIf { it > 0 } ?: 256; val h = d.intrinsicHeight.takeIf { it > 0 } ?: 256
+                val scale = minOf(1f, 720f / maxOf(w, h))
+                d.toBitmap((w * scale).toInt().coerceAtLeast(1), (h * scale).toInt().coerceAtLeast(1)).asImageBitmap()
+            }.getOrNull()
+        }
+    }
+    Box(modifier.background(Color.White, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
+        img?.let { androidx.compose.foundation.Image(it, null, Modifier.fillMaxWidth().padding(8.dp), contentScale = androidx.compose.ui.layout.ContentScale.Fit) }
+    }
+}
+
+/** Every widget the installed apps offer: searchable, with previews; tap one to see it big, then add it. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun WidgetPickerSheet(vm: MomentViewModel, ui: UiState, onPick: (android.appwidget.AppWidgetProviderInfo) -> Unit) {
+    if (!ui.widgetPicker) return
+    val p = palette(Look.CREAM)
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val providers = remember { vm.widgets.providers().map { it to (it.loadLabel(ctx.packageManager) to vm.widgets.appLabel(it)) } }
+    var q by remember { mutableStateOf("") }
+    var chosen by remember { mutableStateOf<android.appwidget.AppWidgetProviderInfo?>(null) }
+    ModalBottomSheet(onDismissRequest = { vm.openWidgetPicker(false) }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SHEET) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp).imePadding().navigationBarsPadding()) {
+            val pick = chosen
+            if (pick != null) {
+                // Preview before adding: what it looks like, how big it is.
+                androidx.activity.compose.BackHandler { chosen = null }
+                Text(pick.loadLabel(ctx.packageManager), 28, p.text, weight = 500, maxLines = 2)
+                Text(vm.widgets.appLabel(pick) + " · " + sizeText(ctx, pick), 15, p.text2)
+                Spacer(Modifier.height(16.dp))
+                WidgetPreview(pick, Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 360.dp))
+                Spacer(Modifier.height(20.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button("Add", Btn.Primary, p) { onPick(pick) }
+                    Button("Back", Btn.Ghost, p) { chosen = null }
+                }
+            } else {
+                Text("Add a widget", 28, p.text, weight = 500)
+                Spacer(Modifier.height(10.dp))
+                Field(q, "Search widgets or apps", p, { q = it })
+                Spacer(Modifier.height(6.dp))
+                val shown = providers.filter { (_, l) -> q.isBlank() || l.first.contains(q.trim(), true) || l.second.contains(q.trim(), true) }
+                if (shown.isEmpty()) Text(if (providers.isEmpty()) "No app on this phone offers a widget." else "No widget matches.", 16, p.text2, modifier = Modifier.padding(vertical = 12.dp))
+                LazyColumn(Modifier.heightIn(max = 520.dp)) {
+                    items(shown, key = { it.first.provider.flattenToString() }) { (info, labels) ->
+                        Row(Modifier.fillMaxWidth().clickable { chosen = info }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            WidgetPreview(info, Modifier.width(76.dp).height(56.dp))
+                            Spacer(Modifier.width(14.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(labels.first, 17, p.text, weight = 500, maxLines = 1)
+                                Text(labels.second, 14, p.text2, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+    }
+}
+
+/** "4 × 2 cells" from the widget's declared size. */
+private fun sizeText(ctx: android.content.Context, info: android.appwidget.AppWidgetProviderInfo): String {
+    if (android.os.Build.VERSION.SDK_INT >= 31 && info.targetCellWidth > 0) return "${info.targetCellWidth} × ${info.targetCellHeight}"
+    val d = ctx.resources.displayMetrics.density
+    val w = ((info.minWidth / d + 30) / 70).toInt().coerceAtLeast(1); val h = ((info.minHeight / d + 30) / 70).toInt().coerceAtLeast(1)
+    return "$w × $h"
+}
+
+/** Font for the whole home screen, clock weight and size, 12/24 h: all live, nothing leaves the phone. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun StyleSheet(vm: MomentViewModel, ui: UiState) {
+    if (!ui.showStyle) return
+    val p = palette(Look.CREAM)
+    val st = Style.current
+    ModalBottomSheet(onDismissRequest = { vm.openStyle(false) }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SHEET) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp).padding(bottom = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Style", 28, p.text, weight = 500)
+            Text(ui.time.ifBlank { "12:34" }, Style.SIZES[st.clockSize].second / 2 + 20, p.text, weight = Style.WEIGHTS[st.clockWeight].second)
+            Text("Font", 13, p.text2)
+            ChoiceRow(Style.FONTS, st.font, p, fontOf = { Style.family(it) }) { vm.setStyle(st.copy(font = it)) }
+            Text("Clock weight", 13, p.text2)
+            ChoiceRow(Style.WEIGHTS.map { it.first }, st.clockWeight, p) { vm.setStyle(st.copy(clockWeight = it)) }
+            Text("Clock size", 13, p.text2)
+            ChoiceRow(Style.SIZES.map { it.first }, st.clockSize, p) { vm.setStyle(st.copy(clockSize = it)) }
+            Text("Effect", 13, p.text2)
+            ChoiceRow(Effects.NAMES, st.effect, p) { vm.setStyle(st.copy(effect = it)) }
+            Text("Auto follows the context (rain, stars, glow). The sparkle by the clock pauses any effect.", 12, p.text2)
+            Text("Time format", 13, p.text2)
+            ChoiceRow(listOf("24 h", "12 h"), if (st.h12) 1 else 0, p) { vm.setStyle(st.copy(h12 = it == 1)) }
         }
     }
 }

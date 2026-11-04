@@ -48,6 +48,7 @@ class ContextStore(ctx: Context) {
     /** What the companion wears right now, newest last. */
     fun wardrobe(): List<String> = JSONArray(prefs.getString("wardrobe", "[]")).strings()
     fun addToWardrobe(item: String) = prefs.edit().putString("wardrobe", JSONArray(wardrobe() + item).toString()).apply()
+    fun removeFromWardrobe(item: String) = prefs.edit().putString("wardrobe", JSONArray(wardrobe().filter { !it.equals(item, true) }).toString()).apply()
     fun clearWardrobe() = prefs.edit().remove("wardrobe").apply()
 
     fun deleteContext(id: String) =
@@ -55,12 +56,25 @@ class ContextStore(ctx: Context) {
 
     /** Facts the companion remembers about the user (agent "remember" tool). */
     fun memory(): List<String> = JSONArray(prefs.getString("memory", "[]")).strings()
-    fun forget(fact: String) = prefs.edit().putString("memory", JSONArray(memory() - fact).toString()).apply()
-    fun remember(fact: String) = prefs.edit().putString("memory", JSONArray((memory() + fact).takeLast(30)).toString()).apply()
+    fun forget(fact: String): Boolean {
+        val m = memory(); val hit = m.firstOrNull { it.equals(fact.trim(), true) } ?: m.firstOrNull { it.contains(fact.trim(), true) } ?: return false
+        prefs.edit().putString("memory", JSONArray(m - hit).toString()).apply(); return true
+    }
+    /** Saves [fact] unless already known (case and punctuation ignored); drops [replaces] if given. */
+    fun remember(fact: String, replaces: String = ""): String {
+        fun norm(s: String) = s.lowercase().replace(Regex("[^a-z0-9 ]"), "").trim()
+        val f = fact.trim(); if (f.isBlank()) return "nothing to save"
+        val old = memory()
+        if (old.any { norm(it) == norm(f) }) return "already known"
+        val dropped = old.filter { replaces.isNotBlank() && norm(it) == norm(replaces) }
+        prefs.edit().putString("memory", JSONArray(((old - dropped.toSet()) + f).takeLast(40)).toString()).apply()
+        return if (dropped.isEmpty()) "saved" else "saved, replaced '${dropped.first()}'"
+    }
 
     /** Rows the user edited by hand (long-press: swap or remove), per context. */
     fun itemsFor(contextId: String): List<NowItem>? =
         prefs.getString("items_$contextId", null)?.let { JSONArray(it).objects().map { o -> NowItem.fromJson(o) } }
+    fun clearItems(contextId: String) = prefs.edit().remove("items_$contextId").apply()
     fun setItems(contextId: String, items: List<NowItem>) =
         prefs.edit().putString("items_$contextId", JSONArray(items.map { it.toJson() }).toString()).apply()
 

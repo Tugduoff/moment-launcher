@@ -51,6 +51,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
@@ -172,10 +173,13 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                 .62f to veil.copy(alpha = .55f), .78f to veil.copy(alpha = .86f), 1f to veil.copy(alpha = .94f),
             )))
         }
-        if (!ui.effectsOff) when (ctx.look) {
-            Look.GAME -> GameGlow()
-            Look.RAIN -> RainOverlay()
-            Look.NIGHT -> NightStars()
+        val effect = Style.current.effect
+        if (!ui.effectsOff) when {
+            effect == 1 -> Unit
+            effect > 1 -> EffectLayer(effect)
+            ctx.look == Look.GAME -> GameGlow()
+            ctx.look == Look.RAIN -> RainOverlay()
+            ctx.look == Look.NIGHT -> NightStars()
             else -> Unit
         }
         Column(
@@ -191,18 +195,26 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                     interactionSource = remember { MutableInteractionSource() }, indication = null,
                     onClick = {}, onLongClick = { vm.openDemo(true) },
                 )) {
-                    Text(ui.time, 88, p.text, weight = 300, letterSpacing = -2.64, lineHeight = 96)
+                    Style.current.let { st ->
+                        val size = Style.SIZES[st.clockSize].second
+                        Text(ui.time, size, p.text, weight = Style.WEIGHTS[st.clockWeight].second, letterSpacing = -size * 0.03, lineHeight = (size * 1.09).toInt())
+                    }
                     Spacer(Modifier.height(2.dp))
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         Text(ui.date, 17, p.text2)
                         StatusGlyphs(ui, p)
                         // Rain, stars or glow on screen: one small button turns them off (and back on).
-                        if (ctx.look == Look.RAIN || ctx.look == Look.NIGHT || ctx.look == Look.GAME) {
+                        if (Style.current.effect > 1 || (Style.current.effect == 0 && (ctx.look == Look.RAIN || ctx.look == Look.NIGHT || ctx.look == Look.GAME))) {
                             Spacer(Modifier.weight(1f))
                             Box(Modifier.size(32.dp).clickable { vm.toggleEffects() }, contentAlignment = Alignment.Center) {
                                 LineIcon(Icons.SPARKLE, p.text2.copy(alpha = if (ui.effectsOff) .35f else .8f), 18.dp)
                             }
                         }
+                    }
+                    ui.nextEvent?.let { e ->
+                        val at = java.text.SimpleDateFormat("HH:mm", java.util.Locale.ENGLISH).format(java.util.Date(e.start))
+                        Text("$at · ${e.title}", 15, p.text2, maxLines = 1,
+                            modifier = Modifier.padding(top = 4.dp).clickable { vm.openEvent() })
                     }
                 }
             }
@@ -217,11 +229,14 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.combinedClickable(remember { MutableInteractionSource() }, null, onLongClick = { vm.openWardrobe(true) }) { vm.tapCompanion() }) {
-                        Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, outfit = ui.outfit, dizzyKey = ui.dizzy)
+                        Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, layers = ui.layers, dizzyKey = ui.dizzy)
                     }
                 }
             } else {
-                Spacer(Modifier.weight(1f))
+                // Widgets sit under the clock; the free space stays above the rows.
+                Column(Modifier.weight(1f).fillMaxWidth().padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ui.widgetIds.forEach { id -> WidgetSlot(vm, id) }
+                }
                 // The Now block swaps between: search results, a proposal card, or this moment's items.
                 AnimatedContent(
                     targetState = when {
@@ -260,7 +275,7 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.combinedClickable(remember { MutableInteractionSource() }, null, onLongClick = { vm.openWardrobe(true) }) { vm.tapCompanion() }, contentAlignment = Alignment.Center) {
                         if (ui.listening) ListeningRings(ui.voiceLevel, p.text)
-                        Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, outfit = ui.outfit, dizzyKey = ui.dizzy)
+                        Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, layers = ui.layers, dizzyKey = ui.dizzy)
                     }
                     Spacer(Modifier.width(4.dp))
                     AnimatedContent(
@@ -688,4 +703,14 @@ private fun NightStars() {
     Canvas(Modifier.fillMaxSize()) {
         stars.forEach { (x, y, k) -> drawCircle(Color.White.copy(alpha = (.15f + .5f * k) * (if (k > .5f) tw else 1f)), (0.8f + k * 1.2f) * density, Offset(x * size.width, y * size.height)) }
     }
+}
+
+/** Another app's widget, hosted by Moment. Remove it from "This screen" (long-press the background). */
+@Composable
+private fun WidgetSlot(vm: MomentViewModel, id: Int) {
+    androidx.compose.ui.viewinterop.AndroidView(
+        factory = { c -> vm.widgets.view(c, id).also { v -> (v.parent as? android.view.ViewGroup)?.removeView(v) } },
+        modifier = Modifier.fillMaxWidth().height(vm.widgets.heightDp(id).dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp)),
+    )
 }

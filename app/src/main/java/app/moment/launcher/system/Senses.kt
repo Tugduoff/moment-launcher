@@ -42,12 +42,29 @@ class Senses(private val ctx: Context) {
         }.getOrNull()
     }
 
-    /** Starred contacts with a phone number. */
-    fun favourites(): List<Friend> {
+    /** Favourites: contacts starred in the phone's Contacts app, plus the ones picked in Moment ([picked], by name). */
+    fun favourites(picked: Set<String> = emptySet()): List<Friend> {
+        val starred = query("${ContactsContract.CommonDataKinds.Phone.STARRED}=1")
+        val chosen = if (picked.isEmpty()) emptyList() else contacts().filter { it.name in picked }
+        return (chosen + starred).distinctBy { it.name }
+    }
+
+    /** Every contact with a phone number, A to Z (for the picker and "call Léa"). */
+    fun contacts(): List<Friend> = query(null)
+
+    /** Best match for a spoken name: exact, then first name, then contains. */
+    fun find(name: String): Friend? {
+        val n = name.trim(); if (n.isBlank()) return null
+        val all = contacts()
+        return all.firstOrNull { it.name.equals(n, true) } ?: all.firstOrNull { it.name.substringBefore(' ').equals(n, true) }
+            ?: all.firstOrNull { it.name.contains(n, true) }
+    }
+
+    private fun query(where: String?): List<Friend> {
         if (!granted(Manifest.permission.READ_CONTACTS)) return emptyList()
         val cols = arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER)
         return runCatching {
-            ctx.contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI, cols, "${ContactsContract.CommonDataKinds.Phone.STARRED}=1", null,
+            ctx.contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI, cols, where, null,
                 "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} ASC")?.use { c ->
                 generateSequence { if (c.moveToNext()) Friend(c.getString(0).orEmpty(), c.getString(1).orEmpty()) else null }.toList()
             }.orEmpty().distinctBy { it.name }

@@ -8,6 +8,7 @@ import org.json.JSONObject
 sealed class PlanStep(val label: String) {
     class CreateContext(val context: MomentContext, label: String) : PlanStep(label)
     class DeleteContext(val id: String, label: String) : PlanStep(label)
+    class UpdateContext(val context: MomentContext, label: String) : PlanStep(label)
 }
 
 data class AgentPlan(val reply: String, val steps: List<PlanStep>, val trace: List<String>)
@@ -16,9 +17,16 @@ data class AgentPlan(val reply: String, val steps: List<PlanStep>, val trace: Li
 interface AgentHost {
     fun now(): JSONObject
     fun contexts(): JSONArray
+    /** A saved context, by id, with everything the agent may change. */
+    fun context(id: String): MomentContext?
+    /** Opens the dialer for the best-matching contact (the user still taps call). */
+    fun callContact(name: String): String
     fun apps(): JSONArray
     fun memory(): List<String>
-    fun remember(fact: String)
+    /** Saves a fact; returns what happened (saved / already known / replaced an older one). */
+    fun remember(fact: String, replaces: String = ""): String
+    fun forget(fact: String): String
+    fun addReminder(title: String, startMillis: Long): String
     fun openApp(name: String): String
     fun wear(accessory: String): String
     fun undress(): String
@@ -34,7 +42,8 @@ interface AgentHost {
  * plan the user approves on one card.
  */
 object Agent {
-    private const val MAX_TURNS = 6
+    private const val MAX_TURNS = 8
+    private const val HISTORY = 20
 
     private fun fn(name: String, desc: String, params: JSONObject = JSONObject().put("type", "object").put("properties", JSONObject())) =
         JSONObject().put("type", "function").put("function", JSONObject().put("name", name).put("description", desc).put("parameters", params))
@@ -71,17 +80,42 @@ object Agent {
             "greeting" to s("What the companion says when it starts, max 8 words"),
             "outfit" to s("Accessory the companion wears there, 3-8 words, never 'tiny'/'small', or empty"),
         )))
+        .put(fn("update_context", "Stage a change to ONE existing context (applied after the user accepts). Only pass the fields to change; items/hide replace the whole list, add_items/remove_items/add_hide/remove_hide edit it.", JSONObject()
+            .put("type", "object").put("required", JSONArray(listOf("id")))
+            .put("properties", JSONObject()
+                .put("id", s("Context id from list_contexts"))
+                .put("name", s("New name")).put("chip", s("New chip")).put("place", s("Place label, or 'none' to clear"))
+                .put("start_hour", i("0-23, -1 to clear")).put("end_hour", i("1-24, -1 to clear"))
+                .put("days", JSONObject().put("type", "array").put("items", s("Day name")))
+                .put("bluetooth", e(listOf("none", "car", "headphones"), "Trigger device"))
+                .put("items", JSONObject().put("type", "array").put("maxItems", 4).put("items", itemSchema))
+                .put("add_items", JSONObject().put("type", "array").put("items", itemSchema))
+                .put("remove_items", JSONObject().put("type", "array").put("items", s("Row label to remove")))
+                .put("hide", JSONObject().put("type", "array").put("items", s("App name")))
+                .put("add_hide", JSONObject().put("type", "array").put("items", s("App name")))
+                .put("remove_hide", JSONObject().put("type", "array").put("items", s("App name")))
+                .put("greeting", s("Greeting")).put("outfit", s("Accessory, or 'none'"))
+                .put("mood", e(listOf("awake", "glasses", "seatbelt", "headphones", "sleepy"), "Companion look"))
+                .put("look", e(listOf("cream", "study", "car", "game", "rain", "night"), "Palette")))))
         .put(fn("delete_context", "Stage deleting one of the user's contexts by name.", props("name" to s("Context name"))))
         .put(fn("open_app", "Open an installed app right now.", props("name" to s("Exact app name"))))
         .put(fn("wear", "Put on, hold or play something right now (hat, glasses, makeup, instrument). Generated with Muse Image; stacks on what it wears.", props("accessory" to s("3-10 words, specific and visual"))))
         .put(fn("undress", "Take off everything it wears."))
         .put(fn("share_postcard", "Paint a postcard of the companion in the current moment with Muse Image and open the share sheet (for posting on X / Instagram)."))
         .put(fn("paint_background", "Paint a new home screen background for the current context with Muse Image (a calm wallpaper).", props("description" to s("What the wallpaper shows, 5-15 words, visual"))))
-        .put(fn("remember", "Save a durable fact or preference about the user for later (e.g. 'plays guitar', 'gym on Tue and Thu').", props("fact" to s("Short fact"))))
+        .put(fn("remember", "Save a durable fact or preference about the user (e.g. 'plays guitar', 'gym on Tue and Thu'). If it updates something you already remember, pass the old fact in 'replaces'.",
+            props("fact" to s("Short fact"), "replaces" to s("Exact old fact it supersedes, or empty"), required = listOf("fact"))))
+        .put(fn("call_contact", "Call someone from the user's contacts (opens the dialer ready to call).", props("name" to s("Contact name or first name"))))
+        .put(fn("forget", "Forget a fact you remember (the user asked, or it is wrong or outdated).", props("fact" to s("Exact fact as remembered"))))
+        .put(fn("add_reminder", "Open the calendar with a new event filled in (the user saves it). For 'remind me…', appointments, deadlines.", props(
+            "title" to s("Short title"), "date" to s("YYYY-MM-DD"), "time" to s("HH:mm, 24h"))))
 
     private fun system(memory: List<String>) = """You are the companion living inside Moment, a calm Android home screen: a small round yellow fruit with a leaf.
 You help the user shape their home screen into "contexts": for a place, time window or device, at most 4 rows (apps or actions) and which distracting apps to hide.
 Use tools. Look before you act (get_now, list_contexts, list_apps) when it helps. You can call several tools in one turn.
+To change an existing context, use update_context with its id (never delete and recreate it).
+If a tool returns an error, read it and fix the call (right id, installed app name) instead of giving up; tell the user only if it still fails.
+Remember new durable facts the user tells you (routines, tastes, people); do not store passwords, codes or anything private they did not ask you to keep.
 Changes to contexts are only STAGED: the user approves them on a card. Opening apps, wearing things and remembering facts happen right away.
 For a multi-part request ("set up my week", "I go to the gym Tuesday and Thursday after class"), stage every context needed in one go.
 Only use installed app names for app rows; prefer actions (navigate, call, ride, share_location) when they save a step.
@@ -93,7 +127,7 @@ ${if (memory.isEmpty()) "" else "What you remember about the user: " + memory.jo
     /** [history]: the conversation so far, oldest first, as (fromUser, text). */
     suspend fun run(request: String, host: AgentHost, history: List<Pair<Boolean, String>> = emptyList()): AgentPlan {
         val messages = JSONArray().put(JSONObject().put("role", "system").put("content", system(host.memory())))
-        history.takeLast(10).forEach { (me, text) -> messages.put(JSONObject().put("role", if (me) "user" else "assistant").put("content", text)) }
+        history.takeLast(HISTORY).forEach { (me, text) -> messages.put(JSONObject().put("role", if (me) "user" else "assistant").put("content", text)) }
         messages.put(JSONObject().put("role", "user").put("content", request))
         val steps = mutableListOf<PlanStep>(); val trace = mutableListOf<String>()
         repeat(MAX_TURNS) {
@@ -135,11 +169,18 @@ ${if (memory.isEmpty()) "" else "What you remember about the user: " + memory.jo
                 steps += PlanStep.CreateContext(c, short(c)); step("Drafting '${c.name}'")
                 "staged as step ${steps.size}: $label"
             }
+            "update_context" -> {
+                val old = host.context(a.optString("id")) ?: return err("no context with id '${a.optString("id")}'; call list_contexts for ids")
+                val c = patch(old, a)
+                steps.removeAll { it is PlanStep.UpdateContext && it.context.id == c.id }
+                steps += PlanStep.UpdateContext(c, "Update '${c.name}'"); step("Editing '${old.name}'")
+                "staged as step ${steps.size}: ${describe(c)}"
+            }
             "delete_context" -> {
                 val target = a.optString("name")
                 val all = host.contexts()
                 val match = (0 until all.length()).map { all.getJSONObject(it) }.firstOrNull { it.optString("name").equals(target, true) }
-                if (match == null) "no context named $target" else {
+                if (match == null) err("no context named '$target'; call list_contexts") else {
                     steps += PlanStep.DeleteContext(match.getString("id"), "Remove '${match.optString("name")}'")
                     step("Planning to remove '$target'"); "staged removal"
                 }
@@ -149,9 +190,45 @@ ${if (memory.isEmpty()) "" else "What you remember about the user: " + memory.jo
             "undress" -> { step("Taking everything off"); host.undress() }
             "share_postcard" -> { step("Painting a postcard"); host.share() }
             "paint_background" -> { step("Painting a background"); host.paintBackground(a.optString("description")) }
-            "remember" -> { step("Remembering: ${a.optString("fact")}"); host.remember(a.optString("fact")); "saved" }
-            else -> "unknown tool"
+            "remember" -> { step("Remembering: ${a.optString("fact")}"); host.remember(a.optString("fact"), a.optString("replaces")) }
+            "call_contact" -> { step("Calling ${a.optString("name")}"); host.callContact(a.optString("name")) }
+            "forget" -> { step("Forgetting: ${a.optString("fact")}"); host.forget(a.optString("fact")) }
+            "add_reminder" -> {
+                val at = runCatching { java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.ENGLISH).parse("${a.optString("date")} ${a.optString("time")}")!!.time }
+                    .getOrNull() ?: return err("date must be YYYY-MM-DD and time HH:mm")
+                step("Adding '${a.optString("title")}' to your calendar"); host.addReminder(a.optString("title"), at)
+            }
+            else -> err("unknown tool '$name'")
         }
+    }
+
+    private fun err(msg: String) = JSONObject().put("error", msg).toString()
+
+    /** Applies only the fields the model passed to [old]. */
+    private fun patch(old: MomentContext, a: JSONObject): MomentContext {
+        fun str(k: String) = a.optString(k).takeIf { a.has(k) && it.isNotBlank() }
+        fun list(k: String) = if (a.has(k)) (0 until (a.optJSONArray(k)?.length() ?: 0)).map { a.getJSONArray(k).optString(it) } else null
+        fun items(k: String) = a.optJSONArray(k)?.let { arr -> (0 until arr.length()).map { app.moment.launcher.data.NowItem.fromJson(arr.getJSONObject(it)) } }
+        val t = old.trigger
+        val hour = { k: String, cur: Int? -> if (a.has(k)) a.optInt(k, -1).takeIf { it in 0..24 } else cur }
+        val trigger = t.copy(
+            place = str("place")?.let { if (it.equals("none", true)) null else it } ?: t.place,
+            startHour = hour("start_hour", t.startHour), endHour = hour("end_hour", t.endHour),
+            days = list("days") ?: t.days,
+            bluetooth = str("bluetooth")?.let { if (it == "none") null else it } ?: t.bluetooth,
+        )
+        val removeLabels = list("remove_items").orEmpty()
+        val rows = ((items("items") ?: old.items).filter { r -> removeLabels.none { it.equals(r.label, true) } } + items("add_items").orEmpty())
+            .distinctBy { it.label.lowercase() }.take(4)
+        val removeHide = list("remove_hide").orEmpty()
+        val hide = ((list("hide") ?: old.hide) + list("add_hide").orEmpty()).filter { h -> removeHide.none { it.equals(h, true) } }.distinct()
+        return old.copy(
+            name = str("name") ?: old.name, chip = str("chip") ?: old.chip, trigger = trigger, items = rows, hide = hide,
+            focus = hide.isNotEmpty() || (old.focus && old.hide.isEmpty()), greeting = str("greeting") ?: old.greeting,
+            outfit = str("outfit")?.let { if (it.equals("none", true)) "" else app.moment.launcher.data.cleanAccessory(it) } ?: old.outfit,
+            mood = str("mood")?.let { app.moment.launcher.data.enumOr(it, old.mood) } ?: old.mood,
+            look = str("look")?.let { app.moment.launcher.data.enumOr(it, old.look) } ?: old.look,
+        )
     }
 
     /** What the plan card shows for a staged context: its name and when, nothing more. */

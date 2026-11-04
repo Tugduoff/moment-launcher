@@ -52,4 +52,7 @@ private fun dm(weight: Int) = Font(
     variationSettings = FontVariation.Settings(FontVariation.weight(weight), FontVariation.Setting("opsz", 14f)),
 )
 
-val DmSans = FontFamily(dm(300), dm(400), dm(500))
+val DmSansFamily = FontFamily(dm(300), dm(400), dm(500))
+
+/** The app font: DM Sans unless another one is picked in Style (read in composition, so it updates live). */
+val DmSans: FontFamily get() = Style.family(Style.current.font)

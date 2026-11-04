@@ -83,6 +83,7 @@ fun WardrobeSheet(vm: MomentViewModel, ui: UiState) {
         },
     ) {
         var draft by remember { mutableStateOf("") }
+        var tinting by remember { mutableStateOf<String?>(null) }
         val busy = ui.dressing || ui.thinking
         fun send() { if (draft.isNotBlank() && !busy) { vm.ask(draft); draft = "" } }
 
@@ -98,7 +99,7 @@ fun WardrobeSheet(vm: MomentViewModel, ui: UiState) {
             ) {
                 Companion(
                     if (busy) Mood.THINKING else Mood.AWAKE, 168.dp,
-                    speakKey = ui.speak, hopKey = ui.hop, outfit = ui.outfit,
+                    speakKey = ui.speak, hopKey = ui.hop, layers = ui.layers,
                 )
                 Row(
                     Modifier.align(Alignment.TopEnd).padding(12.dp).background(p.pill, RoundedCornerShape(16.dp))
@@ -131,8 +132,10 @@ fun WardrobeSheet(vm: MomentViewModel, ui: UiState) {
             } else {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     ui.wardrobe.forEach { item ->
-                        PillChip(p, Modifier.alpha(if (busy) .5f else 1f)) {
-                            Text(accessoryLabel(item), 14, p.text, weight = 500, maxLines = 1)
+                        PillChip(p, Modifier.alpha(if (busy) .5f else 1f).border(if (tinting == item) 2.dp else 0.dp, if (tinting == item) p.text else Color.Transparent, RoundedCornerShape(18.dp))) {
+                            // Tap the name to recolour this item.
+                            Text(accessoryLabel(item), 14, p.text, weight = 500, maxLines = 1,
+                                modifier = Modifier.clickable { tinting = if (tinting == item) null else item })
                             Spacer(Modifier.width(6.dp))
                             LineIcon(
                                 Icons.CLOSE, p.text2, 14.dp,
@@ -147,6 +150,24 @@ fun WardrobeSheet(vm: MomentViewModel, ui: UiState) {
                 }
             }
 
+            tinting?.takeIf { it in ui.wardrobe }?.let { item ->
+                Text("Colour of ${accessoryLabel(item).lowercase()}", 13, p.text2)
+                val cur = ui.tints[app.moment.launcher.ai.Outfits.slug(item)] ?: vm.tintOf(item)
+                SwatchRow(Skin.TINTS.map { (n, h) -> n to swatch(h, Color(0xFFE9E2D6), 0.6f) }, cur) { vm.setTint(item, it) }
+            }
+            if (ui.wardrobe.isNotEmpty() && tinting == null) Text("Tap an item's name to change its colour.", 12, p.text2)
+
+            // Face: eye style and mouth, drawn live.
+            Text("Face", 13, p.text2)
+            ChoiceRow(Skin.EYE_STYLES, Skin.current.eyeStyle, p) { vm.setSkin(Skin.current.copy(eyeStyle = it)) }
+            ChoiceRow(Skin.MOUTHS, Skin.current.mouth, p) { vm.setSkin(Skin.current.copy(mouth = it)) }
+
+            // Colours: body, leaf and eyes, applied on the phone instantly (no model call).
+            Text("Colours", 13, p.text2)
+            val skin = Skin.current
+            SwatchRow(Skin.BODIES.mapIndexed { i, (n, h) -> n to swatch(h, Color(0xFFF6B27A), 0.55f) }, skin.body) { vm.setSkin(skin.copy(body = it)) }
+            SwatchRow(Skin.LEAVES.mapIndexed { i, (n, h) -> n to swatch(h, Color(0xFF7DB36A), 0.5f) }, skin.leaf) { vm.setSkin(skin.copy(leaf = it)) }
+            SwatchRow(Skin.EYES.map { (n, c) -> n to c }, skin.eyes) { vm.setSkin(skin.copy(eyes = it)) }
             Text("Try on", 13, p.text2)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SUGGESTIONS.forEach { (label, prompt) ->
@@ -194,4 +215,40 @@ internal fun PillChip(p: Palette, modifier: Modifier = Modifier, content: @Compo
         modifier.background(p.pill, shape).border(1.dp, p.stroke, shape).padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) { content() }
+}
+
+private fun swatch(hue: Float, original: Color, sat: Float): Color =
+    if (hue < 0) original else Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat, 0.96f)))
+
+/** One row of colour dots; the chosen one is ringed. Names are read out by TalkBack. */
+@Composable
+private fun SwatchRow(options: List<Pair<String, Color>>, selected: Int, onPick: (Int) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        options.forEachIndexed { i, (name, c) ->
+            Box(
+                Modifier.size(36.dp).border(if (i == selected) 2.dp else 0.dp, if (i == selected) Color(0xFF2A2622) else Color.Transparent, CircleShape)
+                    .padding(4.dp).background(c, CircleShape).border(1.dp, Color(0x22000000), CircleShape)
+                    .clickable(onClickLabel = name) { onPick(i) },
+            )
+        }
+    }
+}
+
+/** A row of text pills, one chosen. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+internal fun ChoiceRow(options: List<String>, selected: Int, p: Palette, fontOf: ((Int) -> androidx.compose.ui.text.font.FontFamily)? = null, onPick: (Int) -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        options.forEachIndexed { i, label ->
+            val on = i == selected; val shape = RoundedCornerShape(18.dp)
+            Box(
+                Modifier.background(if (on) p.text else p.pill, shape).border(1.dp, if (on) p.text else p.stroke, shape)
+                    .clickable { onPick(i) }.padding(horizontal = 14.dp, vertical = 8.dp),
+            ) {
+                androidx.compose.foundation.text.BasicText(label, style = TextStyle(
+                    fontFamily = fontOf?.invoke(i) ?: DmSans, fontSize = 14.sp, color = if (on) Color(0xFFF7F4EE) else p.text,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight(500)))
+            }
+        }
+    }
 }

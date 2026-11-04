@@ -79,6 +79,7 @@ fun DemoPanel(vm: MomentViewModel, ui: UiState) {
             Toggle("Car Bluetooth connected", ui.demo.carBluetooth) { v -> vm.setDemo { it.copy(carBluetooth = v) } }
             Toggle("Headphones connected", ui.demo.headphones) { v -> vm.setDemo { it.copy(headphones = v) } }
             Toggle("Raining", ui.demo.raining) { v -> vm.setDemo { it.copy(raining = v) } }
+            Toggle("Sample contexts (study, driving, game, rain, late night)", ui.demoContexts) { v -> vm.setDemoContexts(v) }
 
             Text("Try the new features (closes this panel)", 14, ink2)
             fun go(f: () -> Unit) { vm.openDemo(false); f() }
