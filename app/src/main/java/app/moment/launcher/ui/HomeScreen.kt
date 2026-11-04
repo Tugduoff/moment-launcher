@@ -142,7 +142,7 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
         var dx = 0f
         detectHorizontalDragGestures(
             onDragStart = { dx = 0f },
-            onDragEnd = { if (kotlin.math.abs(dx) > swipeMin) vm.openContexts(true) },
+            onDragEnd = { if (kotlin.math.abs(dx) > swipeMin && !vm.ui.value.showOnboarding) vm.openContexts(true) },
         ) { change, d -> dx += d; change.consume() }
     }) {
         when (ctx.look) {

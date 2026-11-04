@@ -9,6 +9,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -69,19 +73,27 @@ internal fun triggerSummary(c: MomentContext): String {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContextsSheet(vm: MomentViewModel, ui: UiState) {
-    if (!ui.showContexts) return
     val p = palette(Look.CREAM)
     val all = listOfNotNull(ui.signals?.let { ContextEngine.home(it) }) + ui.contexts + listOf(
         ContextEngine.study(emptyList()), ContextEngine.driving, ContextEngine.game, ContextEngine.rain, ContextEngine.nightOut,
     ).filter { b -> ui.contexts.none { it.id == b.id } }
-    ModalBottomSheet(
-        onDismissRequest = { vm.openContexts(false) },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = Color(0xFFF7F4EE), shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        dragHandle = {
-            Box(Modifier.padding(top = 10.dp, bottom = 4.dp).width(36.dp).height(4.dp).background(p.stroke, CircleShape))
-        },
+    val swipeMin = with(androidx.compose.ui.platform.LocalDensity.current) { 72.dp.toPx() }
+    // A full page that slides in from the right; swipe it back to the right (or press back) to close.
+    androidx.compose.animation.AnimatedVisibility(
+        ui.showContexts,
+        enter = androidx.compose.animation.slideInHorizontally(androidx.compose.animation.core.tween(280)) { it } + androidx.compose.animation.fadeIn(),
+        exit = androidx.compose.animation.slideOutHorizontally(androidx.compose.animation.core.tween(220)) { it } + androidx.compose.animation.fadeOut(),
     ) {
+        androidx.activity.compose.BackHandler { vm.openContexts(false) }
+        Box(
+            Modifier.fillMaxSize().background(Color(0xFFF7F4EE)).pointerInput(Unit) {
+                var dx = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = { dx = 0f },
+                    onDragEnd = { if (dx > swipeMin) vm.openContexts(false) },
+                ) { change, d -> dx += d; change.consume() }
+            }.statusBarsPadding(),
+        ) {
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding()
                 .padding(horizontal = 28.dp).padding(bottom = 20.dp),
@@ -120,6 +132,7 @@ fun ContextsSheet(vm: MomentViewModel, ui: UiState) {
             Text(
                 "Swipe sideways on the home screen to open this list.", 13, p.text2, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
             )
+        }
         }
     }
 }

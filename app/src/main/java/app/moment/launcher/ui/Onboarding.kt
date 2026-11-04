@@ -8,6 +8,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,7 +51,19 @@ fun Onboarding(vm: MomentViewModel, ui: UiState) {
     val p = palette(Look.CREAM)
     val ctx = LocalContext.current
     var page by remember { mutableIntStateOf(0) }
-    Box(Modifier.fillMaxSize().background(p.bg).systemBarsPadding().padding(horizontal = 28.dp, vertical = 24.dp)) {
+    val swipeMin = with(androidx.compose.ui.platform.LocalDensity.current) { 56.dp.toPx() }
+    Box(Modifier.fillMaxSize().background(p.bg).pointerInput(Unit) {
+        // Swipe like a carousel: towards the left for the next page, towards the right to go back.
+        // Consuming the drag keeps it from reaching the home screen underneath (which opens Contexts).
+        var dx = 0f
+        detectHorizontalDragGestures(
+            onDragStart = { dx = 0f },
+            onDragEnd = {
+                if (dx < -swipeMin) { if (page < PAGES.lastIndex) page++ }
+                else if (dx > swipeMin && page > 0) page--
+            },
+        ) { change, d -> dx += d; change.consume() }
+    }.systemBarsPadding().padding(horizontal = 28.dp, vertical = 24.dp)) {
         AnimatedContent(page, transitionSpec = { (fadeIn() + slideInHorizontally { it / 6 }).togetherWith(fadeOut()) }, label = "onboarding") { i ->
             val (mood, title, body) = PAGES[i]
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
