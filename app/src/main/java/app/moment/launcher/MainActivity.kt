@@ -29,6 +29,7 @@ class MainActivity : ComponentActivity() {
             }
             HomeScreen(vm, ui)
             DemoPanel(vm, ui)
+            app.moment.launcher.ui.TimetableSheet(vm, ui)
         }
     }
 
@@ -62,6 +63,7 @@ class MainActivity : ComponentActivity() {
                 "openanyway" -> vm.openAnyway()
                 "wear" -> vm.wear(arg)
                 "undress" -> vm.undress()
+                "timetable" -> app.moment.launcher.ai.Timetable.startFromFile(vm, arg)
             }
         }
     }

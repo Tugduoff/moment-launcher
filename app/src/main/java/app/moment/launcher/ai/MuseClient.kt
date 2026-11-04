@@ -86,7 +86,7 @@ object MuseClient {
         Base64.decode(JSONObject(text).getJSONArray("data").getJSONObject(0).getString("b64_json"), Base64.DEFAULT)
     }
 
-    private fun post(path: String, body: JSONObject): JSONObject {
+    internal fun post(path: String, body: JSONObject): JSONObject {
         check(hasKey) { "No MODEL_API_KEY in this build" }
         val conn = (URL(BASE + path).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"

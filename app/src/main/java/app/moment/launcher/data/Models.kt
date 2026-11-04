@@ -52,6 +52,7 @@ data class Trigger(
     val endHour: Int? = null,
     val weekdaysOnly: Boolean = false,
     val bluetooth: String? = null, // car | headphones
+    val days: List<String> = emptyList(), // mon..sun; empty = every day (used by timetable contexts)
 ) {
     fun toJson() = JSONObject().apply {
         put("place", place ?: "")
@@ -59,6 +60,7 @@ data class Trigger(
         put("end_hour", endHour ?: -1)
         put("weekdays_only", weekdaysOnly)
         put("bluetooth", bluetooth ?: "none")
+        put("days", JSONArray(days))
     }
 
     companion object {
@@ -68,6 +70,7 @@ data class Trigger(
             endHour = o.optInt("end_hour", -1).takeIf { it in 0..24 },
             weekdaysOnly = o.optBoolean("weekdays_only", false),
             bluetooth = o.optStringOrNull("bluetooth")?.takeIf { it != "none" },
+            days = o.optJSONArray("days").strings(),
         )
     }
 }

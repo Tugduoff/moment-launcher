@@ -268,6 +268,17 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         if (p.context.outfit.isNotBlank()) dress(p.context)
     }
 
+    // ---- Timetable hooks (flow lives in ai/Timetable.kt, UI in ui/TimetableSheet.kt) ---------------
+
+    fun setThinking(on: Boolean) { _ui.update { it.copy(thinking = on) }; updateMood() }
+
+    fun addContexts(list: List<MomentContext>, message: String) {
+        list.forEach { store.saveContext(it) }
+        lastContextId = null
+        recompute()
+        say(message, 5_000)
+    }
+
     // ---- Voice: push-to-talk with Muse Voice Transcribe ---------------------------------------
 
     private var voice: app.moment.launcher.ai.Voice? = null

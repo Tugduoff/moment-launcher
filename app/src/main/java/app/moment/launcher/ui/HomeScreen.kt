@@ -375,6 +375,7 @@ private fun Button(label: String, style: Btn, p: Palette, onClick: () -> Unit) {
 @Composable
 private fun SearchResults(vm: MomentViewModel, ui: UiState, p: Palette) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        TimetableSearchRow(vm, ui.query, p)
         ui.results.forEach { app ->
             Row(Modifier.fillMaxWidth().height(44.dp).clickable { vm.launch(app) }, verticalAlignment = Alignment.CenterVertically) {
                 Text(app.label, 24, p.text, maxLines = 1)
