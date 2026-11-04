@@ -50,17 +50,25 @@ The home screen holds four things: a clock, a companion, at most four rows for *
 
 **Snap your timetable:** type "timetable" (or use the camera) and photograph your class schedule. Muse Spark reads the image and proposes a week of contexts ("Algorithms · Mon 9–11, Thu 10–12 · hides YouTube"). Tick what you want and tap *Add all*.
 
-**Contexts list:** type "contexts" to see every context with its trigger and the outfit the companion wears there.
+**Contexts:** swipe sideways on the home screen. Every context is listed with its trigger and the outfit the companion wears there. Tap one to use it right now (it sticks for an hour); tap it again to go back to automatic.
+
+**Backgrounds it paints:** the first time Home or one of your contexts is on screen, the companion asks Muse Image for a soft wallpaper for it ("I'm painting you a background for Uni restaurant…"), once, and keeps it on the phone. You can also ask: *"paint me a beach at sunset"*. Rain, night, game and driving keep their animated looks.
+
+**Steps and battery:** today's steps (the phone's own step counter, no account) sit next to the date. The companion cheers at 5,000 and 10,000 steps and nudges you when the battery drops low. The agent can see both.
+
+**Fast where it should be:** "open Spotify", or an app's name, opens it instantly with no model call. Only real requests go to the agent.
+
+**First run:** four short onboarding pages with the companion, and a shortcut to make Moment your home screen.
 
 ## How Meta's models are used
 
 | Model | Where | What it does |
 |---|---|---|
-| **Muse Spark agent** (tool calling) | `ai/Agent.kt` | Real OpenAI-style tool calling, up to 6 turns, parallel calls: `get_now`, `list_contexts`, `list_apps`, `propose_context`, `delete_context`, `open_app`, `wear`, `undress`, `remember`, `share_postcard`. Read-only and harmless tools run immediately; changes to the home screen are **staged** into one plan card. Remembered facts feed the next conversations. |
+| **Muse Spark agent** (tool calling) | `ai/Agent.kt` | Real OpenAI-style tool calling, up to 6 turns, parallel calls: `get_now`, `list_contexts`, `list_apps`, `propose_context`, `delete_context`, `open_app`, `wear`, `undress`, `remember`, `share_postcard`, `paint_background`. Read-only and harmless tools run immediately; changes to the home screen are **staged** into one plan card. Remembered facts feed the next conversations. |
 | **Muse Spark vision** | `ai/Timetable.kt` | A photo of a timetable (image_url content part + JSON schema) becomes up to 10 activities with day/time slots, rooms, rows to show and apps to hide. Re-importing replaces, never duplicates. |
 | **Muse Spark + web_search** | `ai/Weather.kt` | Search grounding through the Responses API with a JSON schema: rain now / rain in 3 h / temperature / summary. Only the city name is sent. |
 | **Muse Spark** `muse-spark-1.3` | `ai/MuseJobs.kt` | One JSON-schema-constrained call per interaction (structured output, `reasoning_effort: minimal`, ~3–6 s). It turns a detected pattern or any sentence into one of five intents: a **context** (name, chip, trigger, ≤4 apps/actions, apps to hide, companion mood, palette, greeting, outfit), **open_app**, **dress**, **undress** or **answer**. It also sorts installed apps once (distracting, transport, payment…) so Focus knows what to hide. |
-| **Muse Image** `muse-image-1.0` | `art/generate_companion.sh`, `ai/Outfits.kt` | Generated the companion, its 8 expressions and four **faceless rig bodies** (plain, glasses, headphones, seatbelt) by *editing* one base image, so the character stays identical. **At runtime**, accepting a context or asking "play the guitar" sends the current body to `/images/edits`; the result is cut out on the phone (green-screen key + de-spill) and **stacks**: hat, then guitar, then sunglasses. **Postcards** (`ai/Postcard.kt`): the dressed companion, given a face, painted into a scene for the current moment. |
+| **Muse Image** `muse-image-1.0` | `art/generate_companion.sh`, `ai/Outfits.kt` | Generated the companion, its 8 expressions and four **faceless rig bodies** (plain, glasses, headphones, seatbelt) by *editing* one base image, so the character stays identical. **At runtime**, accepting a context or asking "play the guitar" sends the current body to `/images/edits`; the result is cut out on the phone (green-screen key + de-spill) and **stacks**: hat, then guitar, then sunglasses. **Postcards** (`ai/Postcard.kt`): the dressed companion, given a face, painted into a scene for the current moment. **Backgrounds** (`ai/Backdrops.kt`): a calm wallpaper per context, painted proactively once or on request. |
 | **Muse Voice Transcribe** `muse-voice-transcribe-1.0` | `ai/Voice.kt` | Push-to-talk on the mic button: 16 kHz WAV to `/asr/transcribe` in `PUSH_TO_TALK` mode, with the user's **installed app names as vocabulary keywords** and English + French language bias. |
 
 ### The living companion (rig)
@@ -77,7 +85,7 @@ Because the face is live, every Muse Image outfit keeps blinking and talking.
 
 ## Privacy by design
 
-**Rules decide *when*, the model decides *what*.** Time, place, Bluetooth and visit counting run on the phone (`data/ContextEngine.kt`) and work offline. Only **labels** ever reach the model: `"17 bd Jourdan"`, `"Tuesday 11:58"`, app names. Never coordinates, never usage history. Every model output lands on a card the user confirms, so a wrong answer costs one tap, not a broken home screen. If Muse is unreachable, a rules-only card is shown instead.
+**Rules decide *when*, the model decides *what*.** Time, place, Bluetooth, steps, battery and visit counting run on the phone (`data/ContextEngine.kt`) and work offline. Only **labels** ever reach the model: `"17 bd Jourdan"`, `"Tuesday 11:58"`, app names. Never coordinates, never usage history. Every model output lands on a card the user confirms, so a wrong answer costs one tap, not a broken home screen. If Muse is unreachable, a rules-only card is shown instead.
 
 ## Architecture
 
@@ -111,13 +119,14 @@ echo "MODEL_API_KEY=your_key" > .env        # gitignored; ../.env also works
 adb shell cmd package set-home-activity app.moment.launcher/.MainActivity
 ```
 
-**Demo panel:** long-press the clock to fake time, place, car Bluetooth, headphones and rain, seed visits, or re-sort apps.
+**Demo panel:** long-press the clock to fake time, place, car Bluetooth, headphones, rain, steps and battery, seed visits or re-sort apps, and to try every feature in one tap (agent request, sample timetable, outfits, postcard, backgrounds, wardrobe, contexts, onboarding).
 **Scripted demo** (used to record the video):
 
 ```bash
 adb shell am start -n app.moment.launcher/.MainActivity --es demo "'reset;seed;clock:2026-10-27-11-58;place:JOURDAN'"
 # commands: reset, seed, live, clock:Y-M-D-H-M, place:HOME|JOURDAN|LIBRARY|AWAY|ELSEWHERE,
-#           car:1|0, hp:1|0, rain:1|0, tap, ask:<text>, accept, dismiss
+#           car:1|0, hp:1|0, rain:1|0, steps:N, battery:N, tap, ask:<text>, accept, dismiss, acceptplan,
+#           wear:<text>, undress, postcard, weather, timetable:<path>, wardrobe:1|0, contexts:1|0, use:<context id>, paint[:<wish>]
 ```
 
 ## Built during the hackathon
