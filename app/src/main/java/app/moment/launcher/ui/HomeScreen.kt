@@ -231,8 +231,14 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
             }
             if (searching) {
                 // Searching: results take the whole top of the screen; clock and companion step aside.
-                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = 16.dp)) {
-                    SearchResults(vm, ui, p)
+                // While typing, results sit at the bottom, best match last, right above the bar
+                // where the thumb already is. With an empty query it's the A–Z list, top down.
+                val typing = ui.query.isNotBlank()
+                Box(Modifier.weight(1f).fillMaxWidth().padding(top = 16.dp)) {
+                    Column(
+                        Modifier.fillMaxWidth().align(if (typing) Alignment.BottomStart else Alignment.TopStart)
+                            .verticalScroll(rememberScrollState(), reverseScrolling = typing).padding(bottom = 8.dp),
+                    ) { SearchResults(vm, ui, p) }
                 }
             } else if (ui.chatting) {
                 // Talking: the conversation takes the space of the rows, newest at the bottom.
@@ -565,23 +571,18 @@ internal fun Button(label: String, style: Btn, p: Palette, onClick: () -> Unit) 
 
 @Composable
 private fun SearchResults(vm: MomentViewModel, ui: UiState, p: Palette) {
+    val q = ui.query.trim()
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        TimetableSearchRow(vm, ui.query, p)
-        // Moment's own screens are searchable too.
-        val q = ui.query.trim()
-        if (q.length >= 2) listOf(
-            Triple("Wardrobe", "What your companion wears", { vm.setQuery(""); vm.openWardrobe(true) }),
-            Triple("Contexts", "Every moment Moment knows", { vm.setQuery(""); vm.openContexts(true) }),
-        ).filter { it.first.startsWith(q, ignoreCase = true) }.forEach { (label, detail, open) ->
-            ActionCard(NowItem(label, detail, "moment"), p, onClick = open)
-        }
-        val list = if (q.isEmpty()) ui.apps.sortedBy { it.label.lowercase() } else ui.results
-        list.forEach { app ->
-            Row(Modifier.fillMaxWidth().height(48.dp).clickable { vm.launch(app) }, verticalAlignment = Alignment.CenterVertically) {
-                Text(app.label, 24, p.text, maxLines = 1)
+        if (q.isEmpty()) {
+            TimetableSearchRow(vm, ui.query, p)
+            ui.apps.sortedBy { it.label.lowercase() }.forEach { app ->
+                Row(Modifier.fillMaxWidth().height(48.dp).clickable { vm.launch(app) }, verticalAlignment = Alignment.CenterVertically) {
+                    Text(app.label, 24, p.text, maxLines = 1)
+                }
             }
+            return@Column
         }
-        if (q.isEmpty()) return@Column
+        // Farthest from the thumb: asking the companion, Moment's own screens, the timetable.
         val shape = RoundedCornerShape(22.dp)
         Row(
             Modifier.fillMaxWidth().background(p.pill, shape).border(1.dp, p.stroke, shape)
@@ -590,7 +591,27 @@ private fun SearchResults(vm: MomentViewModel, ui: UiState, p: Palette) {
         ) {
             LineIcon(Icons.SPARKLE, p.text, 20.dp)
             Spacer(Modifier.width(10.dp))
-            Text("Ask Moment: “${ui.query.trim()}”", 15, p.text, weight = 500, maxLines = 2)
+            Text("Ask Moment: “$q”", 15, p.text, weight = 500, maxLines = 2)
+        }
+        TimetableSearchRow(vm, ui.query, p)
+        if (q.length >= 2) listOf(
+            Triple("Wardrobe", "What your companion wears", { vm.setQuery(""); vm.openWardrobe(true) }),
+            Triple("Contexts", "Every moment Moment knows", { vm.setQuery(""); vm.openContexts(true) }),
+        ).filter { it.first.startsWith(q, ignoreCase = true) }.forEach { (label, detail, open) ->
+            ActionCard(NowItem(label, detail, "moment"), p, onClick = open)
+        }
+        // Apps, weakest first, so the best match lands right above the search bar (Enter opens it).
+        val best = ui.results.firstOrNull()
+        ui.results.asReversed().forEach { app ->
+            val top = app == best
+            Row(
+                Modifier.fillMaxWidth().height(if (top) 56.dp else 48.dp)
+                    .then(if (top) Modifier.background(p.pill, shape).border(1.dp, p.stroke, shape) else Modifier)
+                    .clickable { vm.launch(app) }.padding(horizontal = if (top) 16.dp else 0.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(app.label, 24, p.text, weight = if (top) 500 else 400, maxLines = 1)
+            }
         }
     }
 }

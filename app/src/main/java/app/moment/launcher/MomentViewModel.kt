@@ -799,17 +799,38 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     private fun search(q: String) {
         val st = _ui.value
         // Hidden apps stay findable: opening one goes through the focus guard instead.
-        val res = if (q.isBlank()) emptyList() else st.apps
-            .filter { it.label.contains(q.trim(), ignoreCase = true) }
-            .sortedBy { !it.label.startsWith(q.trim(), ignoreCase = true) }
-            .take(6)
+        val needle = q.trim().lowercase()
+        val res = if (needle.isEmpty()) emptyList() else st.apps
+            .mapNotNull { a -> matchScore(a.label.lowercase(), needle)?.let { a to it + launches(a.label).coerceAtMost(500) } }
+            .sortedByDescending { it.second }.map { it.first }
+            .take(8)
         _ui.update { it.copy(results = res) }
     }
+
+    /**
+     * How well an app name matches what was typed: exact, then prefix, then a word starting with
+     * it ("maps" → Google Maps), then anywhere, then initials or letters in order ("gm" → Google
+     * Maps). Null when it doesn't match at all. Apps you open often get a nudge on top.
+     */
+    private fun matchScore(label: String, q: String): Int? {
+        if (label == q) return 5000
+        if (label.startsWith(q)) return 4000 - label.length
+        val words = label.split(' ', '-', '.', '_').filter { it.isNotEmpty() }
+        if (words.any { it.startsWith(q) }) return 3000 - label.length
+        if (label.contains(q)) return 2000 - label.length
+        if (q.length >= 2 && words.joinToString("") { it.take(1) }.startsWith(q)) return 1500
+        var i = 0
+        for (ch in label) if (i < q.length && ch == q[i]) i++
+        return if (q.length >= 3 && i == q.length) 1000 - label.length else null
+    }
+
+    private fun launches(label: String) = uiPrefs.getInt("launch_$label", 0)
 
     private fun hiddenNow(label: String) = !_ui.value.focusUnlocked && _ui.value.hiddenApps.any { it.equals(label, true) }
 
     fun launch(app: InstalledApp) {
         _ui.update { it.copy(query = "", results = emptyList()) }
+        uiPrefs.edit().putInt("launch_${app.label}", launches(app.label) + 1).apply()
         if (hiddenNow(app.label)) { _ui.update { it.copy(guard = app, guardSeconds = null) }; return }
         phone.launch(app)
     }
