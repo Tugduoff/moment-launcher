@@ -58,6 +58,10 @@ class MainActivity : ComponentActivity() {
                 "ask" -> vm.ask(arg)
                 "accept" -> vm.acceptProposal()
                 "dismiss" -> vm.dismissProposal()
+                "query" -> vm.setQuery(arg)
+                "openanyway" -> vm.openAnyway()
+                "wear" -> vm.wear(arg)
+                "undress" -> vm.undress()
             }
         }
     }

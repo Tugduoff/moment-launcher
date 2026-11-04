@@ -10,3 +10,4 @@ captures/
 .kotlin/
 art/raw/
 .claude/
+*.mp4
