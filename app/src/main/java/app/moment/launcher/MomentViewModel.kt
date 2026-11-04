@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.moment.launcher.ai.MuseClient
 import app.moment.launcher.ai.MuseJobs
+import app.moment.launcher.ai.Outfits
 import app.moment.launcher.data.ContextEngine
 import app.moment.launcher.data.ContextStore
 import app.moment.launcher.data.MomentContext
@@ -64,6 +65,8 @@ data class UiState(
     val speak: Int = 0,
 )
 
+private const val WARDROBE = "wardrobe"
+
 class MomentViewModel(app: Application) : AndroidViewModel(app) {
     private val store = ContextStore(app)
     val phone = Phone(app)
@@ -74,6 +77,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     private var lastContextId: String? = null
     private var greetingJob: Job? = null
     private var dismissStreak = 0
+    private var showOffUntil = 0L
     private val outfitCache = mutableMapOf<String, androidx.compose.ui.graphics.ImageBitmap?>()
 
     init {
@@ -120,9 +124,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         val pattern = ContextEngine.patternAt(s, store.visits(), user, store.dismissedPlaces())
             .takeIf { dismissStreak < 2 }
 
-        val outfit = if (ctx.builtIn) null else outfitCache.getOrPut(ctx.id) {
-            app.moment.launcher.ai.Outfits.load(getApplication(), ctx.id)?.asImageBitmap()
-        }
+        val outfit = (if (ctx.builtIn) null else outfitImage(ctx.id)) ?: outfitImage(WARDROBE)
         val changed = ctx.id != lastContextId
         if (changed) {
             lastContextId = ctx.id
@@ -145,7 +147,8 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     private fun updateMood() = _ui.update { st ->
         val ctxMood = st.context?.mood ?: Mood.ASLEEP
         val mood = when {
-            st.thinking -> Mood.THINKING
+            st.thinking || st.dressing -> Mood.THINKING
+            System.currentTimeMillis() < showOffUntil -> Mood.AWAKE
             st.proposal != null -> Mood.TALKING
             st.pattern != null -> Mood.AWAKE
             else -> ctxMood
@@ -221,6 +224,12 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
                     _ui.update { it.copy(proposal = null) }
                     say(p.question.ifBlank { "Opening ${p.explanation}" }, 3_000)
                     phone.openApp(p.explanation, _ui.value.apps)
+                } else if (p.source == "dress") {
+                    _ui.update { it.copy(proposal = null) }
+                    wear(p.explanation, p.question)
+                } else if (p.source == "undress") {
+                    _ui.update { it.copy(proposal = null) }
+                    undress()
                 } else if (p.source == "answer") { _ui.update { it.copy(proposal = null) }; say(p.question, 8_000) }
                 else _ui.update { it.copy(proposal = p, editing = false) }
             }.onFailure { e ->
@@ -256,25 +265,57 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         if (p.context.outfit.isNotBlank()) dress(p.context)
     }
 
-    /** Muse Image dresses the companion for a new context; the face stays live on top. */
-    private fun dress(c: MomentContext) {
-        viewModelScope.launch {
-            delay(2_500)
-            _ui.update { it.copy(dressing = true) }
-            say("One sec, getting ready: ${c.outfit}.", 20_000)
-            runCatching { app.moment.launcher.ai.Outfits.generate(getApplication(), c.id, c.outfit) }
-                .onSuccess { bmp ->
-                    outfitCache[c.id] = bmp.asImageBitmap()
-                    _ui.update { it.copy(dressing = false, hop = it.hop + 1) }
-                    recompute()
-                    say("Ta-da! Dressed for ${c.name}.")
-                }
-                .onFailure { e ->
-                    Log.e("Moment", "outfit failed", e)
-                    _ui.update { it.copy(dressing = false) }
-                    say("Couldn't change outfits this time.")
-                }
-        }
+    // ---- Wardrobe: Muse Image adds accessories on top of what the companion already wears ----
+
+    private fun outfitImage(key: String) = outfitCache.getOrPut(key) {
+        Outfits.load(getApplication(), key)?.asImageBitmap()
+    }
+
+    /** A new context gets its own look, built on the current wardrobe. */
+    private fun dress(c: MomentContext) = viewModelScope.launch {
+        delay(2_500)
+        putOn(c.id, c.outfit, "One sec, getting ready: ${c.outfit}.", "Ta-da! Dressed for ${c.name}.")
+    }
+
+    /** "Put on a cowboy hat" / "play the guitar": stacks onto whatever the companion wears now. */
+    fun wear(accessory: String, reply: String = "") = viewModelScope.launch {
+        if (accessory.isBlank()) return@launch
+        val ctx = _ui.value.context
+        val key = if (ctx != null && !ctx.builtIn && outfitImage(ctx.id) != null) ctx.id else WARDROBE
+        putOn(key, accessory, reply.ifBlank { "Ooh! Trying on $accessory." }, "How do I look?")
+    }
+
+    private suspend fun putOn(key: String, accessory: String, intro: String, done: String) {
+        val app = getApplication<Application>()
+        val base = Outfits.load(app, key) ?: Outfits.load(app, WARDROBE)
+        _ui.update { it.copy(dressing = true) }
+        updateMood()
+        say(intro, 25_000)
+        runCatching { Outfits.generate(app, key, accessory, base) }
+            .onSuccess { bmp ->
+                outfitCache[key] = bmp.asImageBitmap()
+                store.addToWardrobe(accessory)
+                showOffUntil = System.currentTimeMillis() + 9_000
+                _ui.update { it.copy(dressing = false, hop = it.hop + 1) }
+                recompute()
+                say(done, 6_000)
+                viewModelScope.launch { delay(9_100); updateMood() }
+            }
+            .onFailure { e ->
+                Log.e("Moment", "outfit failed", e)
+                _ui.update { it.copy(dressing = false) }
+                updateMood()
+                say("That didn't fit this time. Try again?")
+            }
+    }
+
+    fun undress() {
+        val app = getApplication<Application>()
+        app.filesDir.listFiles { f -> f.name.startsWith("outfit_") }?.forEach { it.delete() }
+        outfitCache.clear(); store.clearWardrobe()
+        _ui.update { it.copy(hop = it.hop + 1) }
+        recompute()
+        say("Back to basics!")
     }
 
     fun dismissProposal() {

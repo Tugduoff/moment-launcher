@@ -51,9 +51,10 @@ object MuseJobs {
     )
 
     private val proposalSchema = obj(
-        "intent" to enum(listOf("context", "open_app", "answer"), "context if the user describes a situation, place, routine or rule; open_app if they just want to open one app; answer for a plain question"),
+        "intent" to enum(listOf("context", "open_app", "dress", "undress", "answer"), "context if the user describes a situation, place, routine or rule; open_app if they just want to open one app; dress if they want you (the companion) to put on, wear, hold or play something (hat, glasses, makeup, instrument, costume); undress if they want you to take everything off; answer for a plain question"),
         "answer" to str("If intent=answer: one short sentence. If open_app: a 2-4 word reply like 'Opening YouTube'. Else empty."),
         "app" to str("If intent=open_app: exact installed app name. Else empty."),
+        "accessory" to str("If intent=dress: what to add, 3-10 words, specific and visual, e.g. 'a red cowboy hat', 'an acoustic guitar held at its side', 'pink heart-shaped sunglasses', 'sparkly star face stickers'. Never use the words tiny or small. Else empty."),
         "question" to str("What the companion asks to confirm, e.g. \"You come here most weekdays at noon. Make it 'Uni restaurant'?\""),
         "explanation" to str("One line: what accepting will do, e.g. 'Adds Izly and directions to 17 bd Jourdan on weekdays around noon.'"),
         "context" to contextSchema,
@@ -90,7 +91,7 @@ The question must mention the pattern in plain words and propose the context nam
 Current place label: $placeLabel
 Now: $timeText
 Installed apps: ${installedApps.joinToString(", ")}
-If this describes a situation, rule or preference, draft the context. If they only want to open an app, set intent=open_app. If it is a plain question, set intent=answer. Always fill context anyway (it is ignored unless intent=context)."""
+If this describes a situation, rule or preference, draft the context. If they only want to open an app, set intent=open_app. If they ask you to wear, put on, hold or play something, set intent=dress (answer = a playful 3-6 word reply like 'Ooh, cowboy time!'). If they ask you to take it all off, intent=undress. If it is a plain question, set intent=answer. Always fill context anyway (it is ignored unless intent=context)."""
         val o = MuseClient.json(SYSTEM, user, "proposal", proposalSchema)
         return o.toProposal("sentence")
     }
@@ -119,8 +120,10 @@ If this describes a situation, rule or preference, draft the context. If they on
         return Proposal(
             context = ctx,
             question = if (optString("intent") == "context") optString("question") else optString("answer"),
-            explanation = if (optString("intent") == "open_app") optString("app") else optString("explanation"),
-            source = when (optString("intent")) { "answer" -> "answer"; "open_app" -> "open_app"; else -> source },
+            explanation = when (optString("intent")) {
+                "open_app" -> optString("app"); "dress" -> optString("accessory"); else -> optString("explanation")
+            },
+            source = when (val i = optString("intent")) { "answer", "open_app", "dress", "undress" -> i; else -> source },
         )
     }
 }

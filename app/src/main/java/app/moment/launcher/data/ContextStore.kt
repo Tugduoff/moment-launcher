@@ -45,5 +45,10 @@ class ContextStore(ctx: Context) {
     fun countTap(contextId: String, label: String) =
         prefs.edit().putInt("tap:$contextId:$label", tapCount(contextId, label) + 1).apply()
 
+    /** What the companion wears right now, newest last. */
+    fun wardrobe(): List<String> = JSONArray(prefs.getString("wardrobe", "[]")).strings()
+    fun addToWardrobe(item: String) = prefs.edit().putString("wardrobe", JSONArray(wardrobe() + item).toString()).apply()
+    fun clearWardrobe() = prefs.edit().remove("wardrobe").apply()
+
     fun reset() = prefs.edit().clear().apply()
 }

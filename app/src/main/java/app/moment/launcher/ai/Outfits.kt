@@ -25,11 +25,11 @@ object Outfits {
     fun load(ctx: Context, contextId: String): Bitmap? =
         file(ctx, contextId).takeIf { it.exists() }?.let { BitmapFactory.decodeFile(it.path) }
 
-    suspend fun generate(ctx: Context, contextId: String, outfit: String): Bitmap {
-        val png = withContext(Dispatchers.Default) { baseOnWhite(ctx) }
+    suspend fun generate(ctx: Context, contextId: String, outfit: String, base: Bitmap? = null): Bitmap {
+        val png = withContext(Dispatchers.Default) { baseOnWhite(ctx, base) }
         val prompt = "Same exact character, same style, same colors, same size and same position in the frame. " +
-            "Keep the face blank exactly as it is (no eyes, no mouth) and keep the blush. " +
-            "Add $outfit, clearly visible and about a third of the body's width, worn naturally, " +
+            "Keep the face blank exactly as it is (no eyes, no mouth), keep the blush and keep everything it already wears. " +
+            "Add $outfit, clearly visible, worn or held naturally (makeup goes on the cheeks or around where the eyes would be), " +
             "in the same soft flat illustration style. Keep the plain solid pure green background."
         val bytes = MuseClient.editImage(png, prompt)
         return withContext(Dispatchers.Default) {
@@ -41,8 +41,8 @@ object Outfits {
     }
 
     /** The bundled faceless body on a pure green key, so white accessories survive the cut-out. */
-    private fun baseOnWhite(ctx: Context): ByteArray {
-        val body = BitmapFactory.decodeResource(ctx.resources, R.drawable.body)
+    private fun baseOnWhite(ctx: Context, base: Bitmap?): ByteArray {
+        val body = base ?: BitmapFactory.decodeResource(ctx.resources, R.drawable.body)
         val out = Bitmap.createBitmap(1024, 1024, Bitmap.Config.ARGB_8888)
         Canvas(out).apply {
             drawColor(Color.rgb(0, 255, 0))
