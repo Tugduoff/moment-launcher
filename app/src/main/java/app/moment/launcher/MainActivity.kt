@@ -33,6 +33,7 @@ class MainActivity : ComponentActivity() {
             DemoPanel(vm, ui)
             WardrobeSheet(vm, ui)
             ContextsSheet(vm, ui)
+            app.moment.launcher.ui.TimetableSheet(vm, ui)
         }
     }
 
@@ -69,6 +70,7 @@ class MainActivity : ComponentActivity() {
                 "acceptplan" -> vm.acceptPlan()
                 "postcard" -> vm.sharePostcard()
                 "weather" -> vm.refreshWeather()
+                "timetable" -> app.moment.launcher.ai.Timetable.startFromFile(vm, arg)
             }
         }
     }

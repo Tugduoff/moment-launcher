@@ -90,7 +90,8 @@ object ContextEngine {
         if (t.bluetooth == "headphones" && !s.headphones) return false
         if (t.place != null && !t.place.equals(s.place.label, true) && !t.place.equals(s.place.address, true)) return false
         if (t.weekdaysOnly && !s.weekday) return false
-        if (t.days.isNotEmpty() && t.days.none { it.equals(s.dayLabel, true) }) return false
+        // Days may be "Tuesday" (agent) or "tue" (timetable): compare the first three letters.
+        if (t.days.isNotEmpty() && t.days.none { it.take(3).equals(s.dayLabel.take(3), true) }) return false
         if (t.startHour != null && t.endHour != null && !inHours(hour, t.startHour, t.endHour)) return false
         return t.place != null || t.bluetooth != null || t.startHour != null || t.days.isNotEmpty()
     }

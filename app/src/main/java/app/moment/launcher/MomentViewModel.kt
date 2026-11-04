@@ -405,6 +405,17 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             .onFailure { e -> Log.e("Moment", "postcard failed", e); _ui.update { it.copy(dressing = false) }; updateMood(); say("The paint didn't dry. Try again?") }
     }
 
+    // ---- Timetable hooks (flow lives in ai/Timetable.kt, UI in ui/TimetableSheet.kt) ---------------
+
+    fun setThinking(on: Boolean) { _ui.update { it.copy(thinking = on) }; updateMood() }
+
+    fun addContexts(list: List<MomentContext>, message: String) {
+        list.forEach { store.saveContext(it) }
+        lastContextId = null
+        recompute()
+        say(message, 5_000)
+    }
+
     // ---- Voice: push-to-talk with Muse Voice Transcribe ---------------------------------------
 
     private var voice: Voice? = null

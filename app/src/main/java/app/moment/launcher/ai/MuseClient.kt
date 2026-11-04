@@ -100,7 +100,7 @@ object MuseClient {
 
     fun postRaw(path: String, body: JSONObject): JSONObject = post(path, body)
 
-    private fun post(path: String, body: JSONObject): JSONObject {
+    internal fun post(path: String, body: JSONObject): JSONObject {
         check(hasKey) { "No MODEL_API_KEY in this build" }
         val conn = (URL(BASE + path).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"

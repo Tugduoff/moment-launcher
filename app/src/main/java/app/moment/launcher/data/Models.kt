@@ -52,7 +52,7 @@ data class Trigger(
     val endHour: Int? = null,
     val weekdaysOnly: Boolean = false,
     val bluetooth: String? = null, // car | headphones
-    val days: List<String> = emptyList(), // e.g. ["Tuesday", "Thursday"]; empty = any day
+    val days: List<String> = emptyList(), // "Tuesday" or "tue"; empty = any day
 ) {
     fun toJson() = JSONObject().apply {
         put("place", place ?: "")
