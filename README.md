@@ -56,6 +56,10 @@ The home screen holds four things: a clock, a companion, at most four rows for *
 
 **Steps and battery:** today's steps (the phone's own step counter, no account) sit next to the date. The companion cheers at 5,000 and 10,000 steps and nudges you when the battery drops low. The agent can see both.
 
+**What I can see:** one page (type "me", or from Contexts) with *About me* in your own words, every fact the companion learned (tap × to forget it), and opt-in switches, each behind its Android permission: **calendar** (your next event becomes a row, with a nudge 10 min before), **favourite contacts** ("Call a friend" calls your starred people) and **approximate location** (home or away, and the weather where you are). Only short labels ever reach the model.
+
+**Change things by hand:** long-press a row to swap or remove it; long-press the background to paint it again, describe a new one, use your own photo, or remove it.
+
 **Fast where it should be:** "open Spotify", or an app's name, opens it instantly with no model call. Only real requests go to the agent.
 
 **First run:** four short onboarding pages with the companion, and a shortcut to make Moment your home screen.

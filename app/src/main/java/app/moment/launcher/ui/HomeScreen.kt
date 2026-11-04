@@ -109,7 +109,10 @@ fun LineIcon(d: String, color: Color, size: Dp = 24.dp, stroke: Float = 2f, modi
     }
 }
 
+private const val CALENDAR_ICON = "M5 5H19A2 2 0 0 1 21 7V19A2 2 0 0 1 19 21H5A2 2 0 0 1 3 19V7A2 2 0 0 1 5 5Z M3 10H21 M8 3V7 M16 3V7"
+
 private fun iconFor(item: NowItem) = when {
+    item.kind == "calendar" -> CALENDAR_ICON
     item.kind == "navigate" -> Icons.NAVIGATE
     item.kind == "call" -> Icons.PHONE
     item.kind == "share_location" -> Icons.SHARE
@@ -122,7 +125,7 @@ private fun iconFor(item: NowItem) = when {
 
 /** Actions (and payments) get a card; plain apps stay as quiet text rows. */
 private fun isAction(item: NowItem) =
-    item.kind in setOf("navigate", "call", "share_location", "ride") ||
+    item.kind in setOf("navigate", "call", "share_location", "ride", "calendar") ||
         item.label.startsWith("Pay", true) || item.target.equals("Izly", true)
 
 // ---- Screen ------------------------------------------------------------------------------------

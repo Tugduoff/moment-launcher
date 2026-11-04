@@ -121,6 +121,7 @@ fun ContextsSheet(vm: MomentViewModel, ui: UiState) {
                 Spacer(Modifier.width(8.dp))
                 Text("New: just say it", 14, p.text2)
             }
+            Text("What I can see", 14, p.text2, underline = true, modifier = Modifier.fillMaxWidth().clickable { vm.openSenses(true) }.padding(top = 8.dp))
         }
         }
     }

@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
             app.moment.launcher.ui.TimetableSheet(vm, ui)
             app.moment.launcher.ui.EditRowSheet(vm, ui)
             app.moment.launcher.ui.BackdropSheet(vm, ui)
+            app.moment.launcher.ui.SensesSheet(vm, ui)
             app.moment.launcher.ui.Onboarding(vm, ui)
         }
     }
@@ -81,6 +82,7 @@ class MainActivity : ComponentActivity() {
                 "timetable" -> app.moment.launcher.ai.Timetable.startFromFile(vm, arg)
                 "wardrobe" -> vm.openWardrobe(arg == "1")
                 "use" -> vm.useContext(arg)
+                "senses" -> vm.openSenses(arg != "0")
                 "paint" -> vm.ui.value.context?.let { vm.paintBackdrop(it, arg.ifBlank { null }) }
                 "steps" -> vm.setDemo { it.copy(steps = arg.toIntOrNull()) }
                 "battery" -> vm.setDemo { it.copy(battery = arg.toIntOrNull()) }

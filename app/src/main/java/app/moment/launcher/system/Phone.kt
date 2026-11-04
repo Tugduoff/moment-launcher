@@ -32,7 +32,8 @@ class Phone(private val ctx: Context) {
     fun run(item: NowItem, apps: List<InstalledApp>) {
         when (item.kind) {
             "navigate" -> navigate(item.target.ifBlank { item.label })
-            "call" -> start(Intent(Intent.ACTION_DIAL), "Phone")
+            "call" -> start(if (item.target.any { it.isDigit() }) Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(item.target))) else Intent(Intent.ACTION_DIAL), "Phone")
+            "calendar" -> start(Intent(Intent.ACTION_VIEW, android.content.ContentUris.withAppendedId(android.provider.CalendarContract.Events.CONTENT_URI, item.target.toLongOrNull() ?: 0L)), "Calendar")
             "share_location" -> shareLocation(item.target)
             "ride" -> ride()
             "web" -> start(Intent(Intent.ACTION_VIEW, Uri.parse(normalizeUrl(item.target.ifBlank { item.label }))))

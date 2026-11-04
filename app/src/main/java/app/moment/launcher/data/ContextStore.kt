@@ -55,6 +55,7 @@ class ContextStore(ctx: Context) {
 
     /** Facts the companion remembers about the user (agent "remember" tool). */
     fun memory(): List<String> = JSONArray(prefs.getString("memory", "[]")).strings()
+    fun forget(fact: String) = prefs.edit().putString("memory", JSONArray(memory() - fact).toString()).apply()
     fun remember(fact: String) = prefs.edit().putString("memory", JSONArray((memory() + fact).takeLast(30)).toString()).apply()
 
     /** Rows the user edited by hand (long-press: swap or remove), per context. */

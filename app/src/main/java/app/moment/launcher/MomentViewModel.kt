@@ -26,6 +26,7 @@ import app.moment.launcher.system.InstalledApp
 import app.moment.launcher.system.Phone
 import app.moment.launcher.system.RealSignals
 import app.moment.launcher.system.Body
+import app.moment.launcher.system.Senses
 import app.moment.launcher.ai.Weather
 import app.moment.launcher.ai.WeatherNow
 import app.moment.launcher.ai.Postcard
@@ -41,6 +42,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import java.util.Date
 
 data class DemoState(
     val clockOffsetMs: Long = 0,
@@ -92,6 +94,13 @@ data class UiState(
     /** Long-press editing: the row being edited, and the background menu. */
     val rowEdit: NowItem? = null,
     val backdropMenu: Boolean = false,
+    /** "What I can see": about me, memory, and the switches. */
+    val showSenses: Boolean = false,
+    val aboutMe: String = "",
+    val memory: List<String> = emptyList(),
+    val sense: Map<String, Boolean> = emptyMap(),
+    val nextEvent: Senses.Event? = null,
+    val homeSaved: Boolean = false,
     /** The companion-painted background of the current context, if any. */
     val backdrop: androidx.compose.ui.graphics.ImageBitmap? = null,
     /** A context the user picked by hand in the Contexts list; it wins until [pinnedUntil]. */
@@ -103,6 +112,11 @@ data class UiState(
 
 private const val WARDROBE = "wardrobe"
 private const val CITY = "Paris, France"
+private val SENSE_PERMISSION = mapOf(
+    "calendar" to android.Manifest.permission.READ_CALENDAR,
+    "contacts" to android.Manifest.permission.READ_CONTACTS,
+    "location" to android.Manifest.permission.ACCESS_COARSE_LOCATION,
+)
 
 class MomentViewModel(app: Application) : AndroidViewModel(app) {
     private val store = ContextStore(app)
@@ -119,6 +133,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
 
     private val real = RealSignals(app)
     val body = Body(app)
+    val senses = Senses(app)
     // Declared before init: recompute() already runs from the init block below.
     private val uiPrefs = app.getSharedPreferences("moment_ui", android.content.Context.MODE_PRIVATE)
     private val backdropCache = mutableMapOf<String, androidx.compose.ui.graphics.ImageBitmap?>()
@@ -151,7 +166,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             minuteOfDay = c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE),
             weekday = dow != Calendar.SATURDAY && dow != Calendar.SUNDAY,
             dayLabel = SimpleDateFormat("EEEE", Locale.ENGLISH).format(c.time),
-            place = d.place,
+            place = realPlace(c) ?: d.place,
             // Real signals OR the demo panel's fake ones.
             carBluetooth = d.carBluetooth || real.devices.value.car,
             headphones = d.headphones || real.devices.value.headphones,
@@ -181,7 +196,13 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         val ctx = pinned ?: ContextEngine.resolve(s, user, distracting)
         val hidden = if (ctx.focus) (ctx.hide + distracting).distinct() else emptyList()
         val manual = store.itemsFor(ctx.id)
-        val items = manual ?: ctx.items.sortedByDescending { store.tapCount(ctx.id, it.label) }
+        val event = if (on("calendar")) senses.nextEvent(System.currentTimeMillis()) else null
+        val friend = if (on("contacts")) senses.favourites().firstOrNull() else null
+        val base = (manual ?: ctx.items.sortedByDescending { store.tapCount(ctx.id, it.label) }).map { item ->
+            if (item.kind == "call" && friend != null) item.copy(label = "Call ${friend.name.substringBefore(' ')}", detail = "", target = friend.number) else item
+        }
+        val items = if (event != null && !ctx.bigButtons) (listOf(eventRow(event)) + base).take(4) else base
+        eventNudge(event)
         val pattern = ContextEngine.patternAt(s, store.visits(), user, store.dismissedPlaces())
             .takeIf { dismissStreak < 2 }
 
@@ -199,6 +220,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
                 time = "%02d:%02d".format(c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE)),
                 date = SimpleDateFormat("EEE d MMM", Locale.ENGLISH).format(c.time),
                 signals = s, context = ctx, items = items, hiddenApps = hidden, pattern = pattern, outfit = outfit, backdrop = backdrop,
+                nextEvent = event,
                 wardrobe = store.wardrobe(), contexts = user,
             )
         }
@@ -275,6 +297,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         val st = _ui.value; val s = st.signals ?: return
         if (sentence.isBlank()) return
         val key = sentence.trim().lowercase().trimEnd('.', '?', '!')
+        if (key in setOf("me", "about me", "privacy", "permissions", "what you see", "memory")) { _ui.update { it.copy(query = "", results = emptyList()) }; openSenses(true); return }
         if (key in setOf("contexts", "my contexts", "wardrobe", "my wardrobe")) {
             _ui.update { it.copy(query = "", results = emptyList(), showContexts = "contexts" in key, showWardrobe = "wardrobe" in key) }
             return
@@ -297,6 +320,8 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
                 .put("place", s?.place?.label).put("car_bluetooth", s?.carBluetooth).put("headphones", s?.headphones)
                 .put("raining", s?.raining).put("active_context", st.context?.name)
                 .put("steps_today", s?.steps).put("battery_percent", s?.battery).put("charging", s?.charging)
+                .put("next_event", st.nextEvent?.let { e -> e.title + " at " + SimpleDateFormat("HH:mm", Locale.ENGLISH).format(Date(e.start)) + (if (e.place.isNotBlank()) ", " + e.place else "") })
+                .put("favourite_contacts", org.json.JSONArray(if (on("contacts")) senses.favourites().map { f -> f.name.substringBefore(' ') } else emptyList<String>()))
                 .put("wearing", org.json.JSONArray(store.wardrobe()))
                 .put("weather", st.weather?.summary ?: "unknown").put("rain_soon", st.weather?.rainSoon)
         }
@@ -307,7 +332,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             val cats = store.appCategories()
             return org.json.JSONArray(_ui.value.apps.map { org.json.JSONObject().put("name", it.label).put("category", cats[it.label] ?: "other") })
         }
-        override fun memory() = store.memory()
+        override fun memory() = listOfNotNull(uiPrefs.getString("about_me", "")?.takeIf { it.isNotBlank() }?.let { "In their own words: $it" }) + store.memory()
         override fun remember(fact: String) = store.remember(fact)
         override fun openApp(name: String): String {
             viewModelScope.launch { phone.openApp(name, _ui.value.apps) }
@@ -420,7 +445,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshWeather() = viewModelScope.launch {
         if (!MuseClient.hasKey) return@launch
-        runCatching { Weather.now(CITY) }
+        runCatching { Weather.now(cityName()) }
             .onSuccess { w ->
                 _ui.update { it.copy(weather = w) }
                 recompute()
@@ -716,6 +741,66 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 .onFailure { Log.e("Moment", "backdrop", it); say("My brushes slipped. Try again later?", 4_000) }
             painting = false
+        }
+    }
+
+    // ---- What I can see: about me, memory, calendar, contacts, approximate location ------------
+
+    private fun on(sense: String) = uiPrefs.getBoolean("sense_$sense", false) && senses.granted(SENSE_PERMISSION.getValue(sense))
+
+    private fun refreshSenses() = _ui.update {
+        it.copy(aboutMe = uiPrefs.getString("about_me", "").orEmpty(), memory = store.memory(),
+            sense = SENSE_PERMISSION.keys.associateWith { k -> on(k) }, homeSaved = uiPrefs.contains("home_lat"))
+    }
+
+    fun openSenses(open: Boolean) { refreshSenses(); _ui.update { it.copy(showSenses = open, showContexts = false, showWardrobe = false, demoOpen = false) } }
+    fun setAboutMe(text: String) { uiPrefs.edit().putString("about_me", text.take(400)).apply(); _ui.update { it.copy(aboutMe = text.take(400)) } }
+    fun forget(fact: String) { store.forget(fact); refreshSenses() }
+
+    /** Called with the permission result: the switch only stays on when Android said yes. */
+    fun setSense(sense: String, wanted: Boolean) {
+        uiPrefs.edit().putBoolean("sense_$sense", wanted).apply()
+        if (wanted && sense == "location" && !uiPrefs.contains("home_lat")) saveHomeHere()
+        refreshSenses(); recompute()
+        if (sense == "location") refreshWeather()
+    }
+
+    fun saveHomeHere() {
+        val l = senses.approxLocation() ?: run { say("Can't find where we are yet.", 3_000); return }
+        uiPrefs.edit().putFloat("home_lat", l.latitude.toFloat()).putFloat("home_lon", l.longitude.toFloat()).apply()
+        say("Home, saved.", 3_000); refreshSenses(); recompute()
+    }
+
+    private var lastLoc: Pair<Long, android.location.Location?> = 0L to null
+    private fun approx(): android.location.Location? {
+        if (System.currentTimeMillis() - lastLoc.first > 60_000) lastLoc = System.currentTimeMillis() to senses.approxLocation()
+        return lastLoc.second
+    }
+
+    /** With approximate location on: home within ~1 km of where you saved it, otherwise away (at night) or elsewhere. */
+    private fun realPlace(c: Calendar): Place? {
+        if (_ui.value.demo.touched || !on("location") || !uiPrefs.contains("home_lat")) return null
+        val l = approx() ?: return null
+        val d = FloatArray(1)
+        android.location.Location.distanceBetween(l.latitude, l.longitude, uiPrefs.getFloat("home_lat", 0f).toDouble(), uiPrefs.getFloat("home_lon", 0f).toDouble(), d)
+        val h = c.get(Calendar.HOUR_OF_DAY)
+        return when { d[0] < 1_000 -> Place.HOME; h >= 21 || h < 5 -> Place.AWAY; else -> Place.ELSEWHERE }
+    }
+
+    private fun cityName(): String = if (on("location")) approx()?.let { senses.city(it) } ?: CITY else CITY
+
+    private fun eventRow(e: Senses.Event): NowItem {
+        val t = SimpleDateFormat("HH:mm", Locale.ENGLISH).format(Date(e.start))
+        return NowItem(e.title, listOf(t, e.place).filter { it.isNotBlank() }.joinToString(" · "), "calendar", e.id.toString())
+    }
+
+    /** Ten minutes before an event, the companion says so, once. */
+    private fun eventNudge(e: Senses.Event?) {
+        e ?: return
+        val mins = (e.start - System.currentTimeMillis()) / 60_000
+        if (mins in 0..10 && !uiPrefs.getBoolean("nudged_${e.id}_${e.start}", false)) {
+            uiPrefs.edit().putBoolean("nudged_${e.id}_${e.start}", true).apply()
+            say("${e.title} in $mins min.", 6_000)
         }
     }
 
