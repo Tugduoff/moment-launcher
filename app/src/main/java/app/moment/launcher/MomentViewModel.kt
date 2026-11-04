@@ -80,7 +80,8 @@ data class UiState(
     val apps: List<InstalledApp> = emptyList(),
     val museStatus: String = "",
     val hop: Int = 0,
-    val outfit: androidx.compose.ui.graphics.ImageBitmap? = null,
+    /** Accessory layers drawn over the body, bottom first. */
+    val layers: List<androidx.compose.ui.graphics.ImageBitmap> = emptyList(),
     val dressing: Boolean = false,
     val listening: Boolean = false,
     val plan: AgentPlan? = null,
@@ -119,7 +120,6 @@ data class UiState(
     val contexts: List<MomentContext> = emptyList(),
 )
 
-private const val WARDROBE = "wardrobe"
 private const val CITY = "Paris, France"
 private val SENSE_PERMISSION = mapOf(
     "calendar" to android.Manifest.permission.READ_CALENDAR,
@@ -138,7 +138,11 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     private var greetingJob: Job? = null
     private var dismissStreak = 0
     private var showOffUntil = 0L
-    private val outfitCache = mutableMapOf<String, androidx.compose.ui.graphics.ImageBitmap?>()
+    private val layerCache = mutableMapOf<String, androidx.compose.ui.graphics.ImageBitmap>()
+    /** Layers being drawn right now, so the same accessory is never requested twice. */
+    private val drawing = mutableSetOf<String>()
+    /** Layers that failed recently: not retried for 10 minutes (recompute runs every 5 s). */
+    private val drawFailedAt = mutableMapOf<String, Long>()
 
     private val real = RealSignals(app)
     val body = Body(app)
@@ -152,6 +156,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         real.start(); body.start()
+        Outfits.dropLegacy(app)
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { body.steps.collect { recompute() } }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { body.shakes.collect { n -> if (n > 0) shaken() } }
         _ui.update { it.copy(effectsOff = uiPrefs.getBoolean("effects_off", false)) }
@@ -218,7 +223,9 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         val pattern = ContextEngine.patternAt(s, store.visits(), user, store.dismissedPlaces())
             .takeIf { dismissStreak < 2 }
 
-        val outfit = (if (ctx.builtIn) null else outfitImage(ctx.id)) ?: outfitImage(WARDROBE)
+        val worn = wornIn(ctx)
+        val layers = worn.mapNotNull { layerImage(it) }
+        worn.filter { layerImage(it) == null }.forEach { prefetch(it) }
         bodyMoments(s)
         val backdrop = backdropFor(ctx)
         val changed = ctx.id != lastContextId
@@ -231,9 +238,9 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(
                 time = "%02d:%02d".format(c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE)),
                 date = SimpleDateFormat("EEE d MMM", Locale.ENGLISH).format(c.time),
-                signals = s, context = ctx, items = items, hiddenApps = hidden, pattern = pattern, outfit = outfit, backdrop = backdrop,
+                signals = s, context = ctx, items = items, hiddenApps = hidden, pattern = pattern, layers = layers, backdrop = backdrop,
                 nextEvent = event,
-                wardrobe = store.wardrobe(), contexts = user,
+                wardrobe = worn, contexts = user,
             )
         }
         updateMood()
@@ -363,13 +370,25 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         }
         override fun contexts() = org.json.JSONArray(store.userContexts().map {
             org.json.JSONObject().put("id", it.id).put("name", it.name).put("when", Agent.describe(it))
+                .put("rows", org.json.JSONArray(it.items.map { r -> r.label })).put("hide", org.json.JSONArray(it.hide)).put("outfit", it.outfit)
         })
         override fun apps(): org.json.JSONArray {
             val cats = store.appCategories()
             return org.json.JSONArray(_ui.value.apps.map { org.json.JSONObject().put("name", it.label).put("category", cats[it.label] ?: "other") })
         }
         override fun memory() = listOfNotNull(uiPrefs.getString("about_me", "")?.takeIf { it.isNotBlank() }?.let { "In their own words: $it" }) + store.memory()
-        override fun remember(fact: String) = store.remember(fact)
+        override fun context(id: String) = store.userContexts().firstOrNull { it.id == id }
+        override fun remember(fact: String, replaces: String) = store.remember(fact, replaces).also { refreshSenses() }
+        override fun forget(fact: String) = if (store.forget(fact)) "forgotten".also { refreshSenses() } else "{\"error\":\"no such fact; use the exact wording from memory\"}"
+        override fun addReminder(title: String, startMillis: Long): String {
+            val i = android.content.Intent(android.content.Intent.ACTION_INSERT, android.provider.CalendarContract.Events.CONTENT_URI)
+                .putExtra(android.provider.CalendarContract.Events.TITLE, title)
+                .putExtra(android.provider.CalendarContract.EXTRA_EVENT_BEGIN_TIME, startMillis)
+                .putExtra(android.provider.CalendarContract.EXTRA_EVENT_END_TIME, startMillis + 30 * 60_000L)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            return runCatching { getApplication<Application>().startActivity(i); "calendar opened with the event filled in; the user saves it" }
+                .getOrElse { "{\"error\":\"no calendar app\"}" }
+        }
         override fun openApp(name: String): String {
             phone.findApp(name, _ui.value.apps)?.takeIf { hiddenNow(it.label) }?.let { app ->
                 viewModelScope.launch { _ui.update { it.copy(guard = app, guardSeconds = null) } }
@@ -378,7 +397,11 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             viewModelScope.launch { phone.openApp(name, _ui.value.apps) }
             return if (phone.findApp(name, _ui.value.apps) != null) "opened" else "not installed; opened the store"
         }
-        override fun wear(accessory: String): String { this@MomentViewModel.wear(accessory, "Trying on $accessory…"); return "putting it on now (takes ~15 s)" }
+        override fun wear(accessory: String): String {
+            val ready = Outfits.has(getApplication<Application>(), cleanAccessory(accessory))
+            this@MomentViewModel.wear(accessory, "Trying on $accessory…")
+            return if (ready) "worn now" else "drawing it now (takes ~15 s)"
+        }
         override fun undress(): String { viewModelScope.launch { this@MomentViewModel.undress() }; return "done" }
         override fun share(): String { sharePostcard(); return "painting a postcard and opening the share sheet" }
         override fun paintBackground(description: String): String {
@@ -398,7 +421,12 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
                 .onSuccess { plan ->
                     _ui.update { it.copy(thinking = false, museStatus = "Muse Spark agent · ${plan.trace.size} steps · ${System.currentTimeMillis() - started} ms") }
                     if (plan.steps.isEmpty()) _ui.update { it.copy(chat = (it.chat + (false to plan.reply)).takeLast(20), speak = it.speak + 1) }
-                    else { _ui.update { it.copy(plan = plan, bubble = null, chatting = false, chat = (it.chat + (false to plan.reply)).takeLast(20)) } }
+                    else {
+                        _ui.update { it.copy(plan = plan, bubble = null, chatting = false, chat = (it.chat + (false to plan.reply)).takeLast(20)) }
+                        plan.steps.forEach { st ->
+                            when (st) { is PlanStep.CreateContext -> prefetch(st.context.outfit); is PlanStep.UpdateContext -> prefetch(st.context.outfit); else -> {} }
+                        }
+                    }
                 }
                 .onFailure { e ->
                     Log.e("Moment", "agent failed, falling back", e)
@@ -417,6 +445,12 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             when (st) {
                 is PlanStep.CreateContext -> { store.saveContext(st.context); if (st.context.outfit.isNotBlank() && dressFor == null) dressFor = st.context }
                 is PlanStep.DeleteContext -> store.deleteContext(st.id)
+                is PlanStep.UpdateContext -> {
+                    val before = store.userContexts().firstOrNull { it.id == st.context.id }
+                    if (before?.items != st.context.items) store.clearItems(st.context.id) // the agent's rows win over old hand edits
+                    store.saveContext(st.context)
+                    if (st.context.outfit.isNotBlank() && st.context.outfit != before?.outfit && dressFor == null) dressFor = st.context
+                }
             }
         }
         _ui.update { it.copy(plan = null) }
@@ -446,7 +480,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
                     _ui.update { it.copy(proposal = null) }
                     undress()
                 } else if (p.source == "answer") { _ui.update { it.copy(proposal = null) }; say(p.question, 8_000) }
-                else _ui.update { it.copy(proposal = p, editing = false) }
+                else { _ui.update { it.copy(proposal = p, editing = false) }; prefetch(p.context.outfit) }
             }.onFailure { e ->
                 Log.e("Moment", "Muse failed", e)
                 // Rules-only fallback: never leave the user with nothing.
@@ -504,8 +538,8 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         _ui.update { it.copy(dressing = true) }; updateMood()
         say("Painting us…", 30_000)
         val appCtx = getApplication<Application>()
-        val outfit = (if (c != null && !c.builtIn) Outfits.load(appCtx, c.id) else null) ?: Outfits.load(appCtx, WARDROBE)
-        runCatching { Postcard.make(appCtx, outfit, scene, store.wardrobe()) }
+        val worn = wornIn(c)
+        runCatching { Postcard.make(appCtx, Outfits.composite(appCtx, worn), scene, worn) }
             .onSuccess { f ->
                 _ui.update { it.copy(dressing = false, hop = it.hop + 1) }; updateMood()
                 say("Here you go!", 3_000)
@@ -562,94 +596,101 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // ---- Wardrobe: Muse Image adds accessories on top of what the companion already wears ----
+    // ---- Wardrobe: one Muse Image layer per accessory, stacked on the body ----------------------
 
-    private fun outfitImage(key: String) = outfitCache.getOrPut(key) {
-        Outfits.load(getApplication(), key)?.asImageBitmap()
+    private fun layerImage(item: String): androidx.compose.ui.graphics.ImageBitmap? =
+        layerCache[Outfits.slug(item)] ?: Outfits.load(getApplication<Application>(), item)?.asImageBitmap()?.also { layerCache[Outfits.slug(item)] = it }
+
+    /** What the companion wears in [c]: the global wardrobe plus that context's own outfit. */
+    private fun wornIn(c: MomentContext?): List<String> {
+        val own = c?.takeIf { !it.builtIn }?.outfit?.takeIf { it.isNotBlank() }
+        return (store.wardrobe() + listOfNotNull(own)).distinctBy { Outfits.slug(it) }
     }
 
-    /** A new context gets its own look, built on the current wardrobe. */
+    /** Draws a layer in the background, silently, so it is ready by the time it is needed. */
+    fun prefetch(raw: String) {
+        val item = cleanAccessory(raw)
+        val slug = Outfits.slug(item)
+        if (item.isBlank() || !MuseClient.hasKey || Outfits.has(getApplication<Application>(), item)) return
+        if (System.currentTimeMillis() - (drawFailedAt[slug] ?: 0L) < 10 * 60_000L || !drawing.add(slug)) return
+        viewModelScope.launch {
+            runCatching { Outfits.generate(getApplication<Application>(), item) }
+                .onSuccess { layerCache[Outfits.slug(item)] = it.asImageBitmap(); recompute() }
+                .onFailure { Log.e("Moment", "layer failed: $item", it); drawFailedAt[slug] = System.currentTimeMillis() }
+            drawing.remove(Outfits.slug(item))
+        }
+    }
+
+    /** A new context gets its own look: instant when its layer was prefetched while the card was up. */
     private fun dress(c: MomentContext) = viewModelScope.launch {
-        delay(2_500)
-        putOn(c.id, c.outfit, "One sec, getting ready: ${c.outfit}.", "Ta-da! Dressed for ${c.name}.")
+        if (layerImage(c.outfit) != null) { showOff("Ta-da! Dressed for ${c.name}."); return@launch }
+        delay(1_500)
+        draw(c.outfit, "One sec, getting ready: ${c.outfit}.", "Ta-da! Dressed for ${c.name}.")
     }
 
     /** "Put on a cowboy hat" / "play the guitar": stacks onto whatever the companion wears now. */
     fun wear(accessory: String, reply: String = "") = viewModelScope.launch {
-        if (accessory.isBlank()) return@launch
-        val ctx = _ui.value.context
-        val key = if (ctx != null && !ctx.builtIn && outfitImage(ctx.id) != null) ctx.id else WARDROBE
-        putOn(key, accessory, reply.ifBlank { "Ooh! Trying on $accessory." }, "How do I look?")
+        val item = cleanAccessory(accessory)
+        if (item.isBlank()) return@launch
+        if (store.wardrobe().none { Outfits.slug(it) == Outfits.slug(item) }) store.addToWardrobe(item)
+        if (layerImage(item) != null) { recompute(); showOff("How do I look?") }
+        else draw(item, reply.ifBlank { "Ooh! Trying on $item." }, "How do I look?")
     }
 
-    private suspend fun putOn(key: String, rawAccessory: String, intro: String, done: String) {
-        val accessory = cleanAccessory(rawAccessory)
+    private fun showOff(line: String) {
+        showOffUntil = System.currentTimeMillis() + 9_000
+        _ui.update { it.copy(hop = it.hop + 1) }
+        recompute(); say(line, 6_000)
+        viewModelScope.launch { delay(9_100); updateMood() }
+    }
+
+    /** Asks Muse Image for a layer we have never drawn, with the companion narrating. */
+    private suspend fun draw(item: String, intro: String, done: String) {
         val app = getApplication<Application>()
-        val base = Outfits.load(app, key) ?: Outfits.load(app, WARDROBE)
+        val slug = Outfits.slug(item)
         _ui.update { it.copy(dressing = true) }
         updateMood()
         say(intro, 25_000)
-        runCatching { Outfits.generate(app, key, accessory, base) }
+        if (!drawing.add(slug)) { // already being drawn (prefetch): wait for it
+            while (slug in drawing) delay(300)
+            _ui.update { it.copy(dressing = false) }
+            if (layerImage(item) != null) showOff(done) else { updateMood(); say("That didn't fit this time. Try again?") }
+            return
+        }
+        runCatching { Outfits.generate(app, item) }
             .onSuccess { bmp ->
-                outfitCache[key] = bmp.asImageBitmap()
-                store.addToWardrobe(accessory)
-                showOffUntil = System.currentTimeMillis() + 9_000
-                _ui.update { it.copy(dressing = false, hop = it.hop + 1) }
-                recompute()
-                say(done, 6_000)
-                viewModelScope.launch { delay(9_100); updateMood() }
+                layerCache[slug] = bmp.asImageBitmap()
+                _ui.update { it.copy(dressing = false) }
+                showOff(done)
             }
             .onFailure { e ->
                 Log.e("Moment", "outfit failed", e)
+                drawFailedAt[slug] = System.currentTimeMillis()
+                store.removeFromWardrobe(item)
                 _ui.update { it.copy(dressing = false) }
                 updateMood()
                 say("That didn't fit this time. Try again?")
             }
+        drawing.remove(slug)
     }
 
     fun openWardrobe(open: Boolean) = _ui.update { it.copy(showWardrobe = open, showContexts = false) }
     fun openContexts(open: Boolean) = _ui.update { it.copy(showContexts = open, showWardrobe = false) }
-    fun outfitFor(contextId: String) = outfitImage(contextId)
+    fun layersFor(c: MomentContext) = wornIn(c).mapNotNull { layerImage(it) }
 
-    /**
-     * Takes one accessory off: Muse Image re-dresses the plain body with what is left, and only a
-     * successful result replaces the current look (a failed call changes nothing).
-     */
+    /** Takes one accessory off: its layer just stops being drawn (and stays cached for next time). */
     fun removeAccessory(item: String) {
-        val rest = store.wardrobe().toMutableList().also { it.remove(item) }
-        if (rest.isEmpty()) { undress(); return }
-        viewModelScope.launch {
-            val app = getApplication<Application>()
-            _ui.update { it.copy(dressing = true) }
-            updateMood()
-            say("Taking off ${item.removePrefix("a ")}. One sec.", 60_000)
-            val tmp = "wardrobe_new"
-            runCatching {
-                var base: android.graphics.Bitmap? = null
-                for (a in rest) base = runCatching { Outfits.generate(app, tmp, a, base) }.getOrElse { Outfits.generate(app, tmp, a, base) }
-                base!!
-            }.onSuccess {
-                app.filesDir.listFiles { f -> f.name.startsWith("outfit_") && f.name != Outfits.file(app, tmp).name }?.forEach { it.delete() }
-                Outfits.file(app, tmp).renameTo(Outfits.file(app, WARDROBE))
-                outfitCache.clear(); store.clearWardrobe(); rest.forEach { store.addToWardrobe(it) }
-                showOffUntil = System.currentTimeMillis() + 6_000
-                _ui.update { it.copy(dressing = false, hop = it.hop + 1) }
-                recompute()
-                say("Better?", 4_000)
-            }.onFailure { e ->
-                Log.e("Moment", "remove accessory failed", e)
-                Outfits.file(app, tmp).delete()
-                _ui.update { it.copy(dressing = false) }
-                updateMood()
-                say("Couldn't change that. Try again?")
-            }
-        }
+        store.removeFromWardrobe(item)
+        _ui.value.context?.takeIf { !it.builtIn && Outfits.slug(it.outfit) == Outfits.slug(item) }
+            ?.let { store.saveContext(it.copy(outfit = "")) }
+        _ui.update { it.copy(hop = it.hop + 1) }
+        recompute()
+        say("Better?", 4_000)
     }
 
     fun undress() {
-        val app = getApplication<Application>()
-        app.filesDir.listFiles { f -> f.name.startsWith("outfit_") }?.forEach { it.delete() }
-        outfitCache.clear(); store.clearWardrobe()
+        store.clearWardrobe()
+        _ui.value.context?.takeIf { !it.builtIn && it.outfit.isNotBlank() }?.let { store.saveContext(it.copy(outfit = "")) }
         _ui.update { it.copy(hop = it.hop + 1) }
         recompute()
         say("Back to basics!")
@@ -777,7 +818,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     private fun backdropFor(c: MomentContext): androidx.compose.ui.graphics.ImageBitmap? {
         val custom = uiPrefs.getBoolean("custom_${c.id}", false)
         if (!backdropOk(c) && !custom) return null
-        val img = backdropCache.getOrPut(c.id) { Backdrops.load(getApplication(), c.id)?.asImageBitmap() }
+        val img = backdropCache.getOrPut(c.id) { Backdrops.load(getApplication<Application>(), c.id)?.asImageBitmap() }
         // Proactive: the first time one of your contexts (or home) is on screen, it paints one, once.
         if (img == null && !painting && MuseClient.hasKey && !_ui.value.showOnboarding && (!c.builtIn || c.id == "home") &&
             !uiPrefs.getBoolean("painted_${c.id}", false)
@@ -797,7 +838,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
                 else -> "${c.name.lowercase()}${if (c.chip.isNotBlank()) " (" + c.chip.lowercase() + ")" else ""}, in Paris"
             }
             say("Painting…", 30_000)
-            runCatching { Backdrops.paint(getApplication(), c.id, subject) }
+            runCatching { Backdrops.paint(getApplication<Application>(), c.id, subject) }
                 .onSuccess { bmp ->
                     backdropCache[c.id] = bmp.asImageBitmap()
                     _ui.update { it.copy(hop = it.hop + 1) }
@@ -911,7 +952,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         val c = _ui.value.context ?: return
         _ui.update { it.copy(backdropMenu = false) }
         viewModelScope.launch {
-            runCatching { Backdrops.fromPhoto(getApplication(), c.id, uri) }
+            runCatching { Backdrops.fromPhoto(getApplication<Application>(), c.id, uri) }
                 .onSuccess { bmp ->
                     uiPrefs.edit().putBoolean("custom_${c.id}", true).putBoolean("painted_${c.id}", true).apply()
                     backdropCache[c.id] = bmp.asImageBitmap(); recompute()
@@ -922,12 +963,12 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeBackdrop() {
         val c = _ui.value.context ?: return
-        Backdrops.remove(getApplication(), c.id)
+        Backdrops.remove(getApplication<Application>(), c.id)
         uiPrefs.edit().putBoolean("custom_${c.id}", false).putBoolean("painted_${c.id}", true).apply()
         backdropCache.remove(c.id); _ui.update { it.copy(backdropMenu = false) }; recompute()
     }
 
-    fun clearBackdrops() { Backdrops.clear(getApplication()); backdropCache.clear(); recompute() }
+    fun clearBackdrops() { Backdrops.clear(getApplication<Application>()); backdropCache.clear(); recompute() }
 
     // ---- Body: steps and battery ---------------------------------------------------------------
 
@@ -986,8 +1027,8 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
 
     fun resetAll() {
         _ui.update { it.copy(plan = null) }
-        store.reset(); dismissStreak = 0; outfitCache.clear()
-        getApplication<Application>().filesDir.listFiles { f -> f.name.startsWith("outfit_") }?.forEach { it.delete() }
+        store.reset(); dismissStreak = 0; layerCache.clear()
+        getApplication<Application>().filesDir.listFiles { f -> f.name.startsWith("layer_") }?.forEach { it.delete() }
         _ui.update { it.copy(proposal = null, bubble = null, demo = DemoState()) }
         classifyAppsIfNeeded()
         recompute()

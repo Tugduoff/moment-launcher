@@ -141,7 +141,7 @@ private fun ContextCard(vm: MomentViewModel, c: MomentContext, p: Palette, activ
             Modifier.size(64.dp).background(Color(0xFFF7F4EE), RoundedCornerShape(18.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            Companion(c.mood.takeIf { it != app.moment.launcher.data.Mood.ASLEEP } ?: app.moment.launcher.data.Mood.AWAKE, 56.dp, outfit = vm.outfitFor(c.id))
+            Companion(c.mood.takeIf { it != app.moment.launcher.data.Mood.ASLEEP } ?: app.moment.launcher.data.Mood.AWAKE, 56.dp, layers = vm.layersFor(c))
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {

@@ -98,7 +98,7 @@ fun WardrobeSheet(vm: MomentViewModel, ui: UiState) {
             ) {
                 Companion(
                     if (busy) Mood.THINKING else Mood.AWAKE, 168.dp,
-                    speakKey = ui.speak, hopKey = ui.hop, outfit = ui.outfit,
+                    speakKey = ui.speak, hopKey = ui.hop, layers = ui.layers,
                 )
                 Row(
                     Modifier.align(Alignment.TopEnd).padding(12.dp).background(p.pill, RoundedCornerShape(16.dp))

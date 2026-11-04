@@ -217,7 +217,7 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.combinedClickable(remember { MutableInteractionSource() }, null, onLongClick = { vm.openWardrobe(true) }) { vm.tapCompanion() }) {
-                        Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, outfit = ui.outfit, dizzyKey = ui.dizzy)
+                        Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, layers = ui.layers, dizzyKey = ui.dizzy)
                     }
                 }
             } else {
@@ -260,7 +260,7 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.combinedClickable(remember { MutableInteractionSource() }, null, onLongClick = { vm.openWardrobe(true) }) { vm.tapCompanion() }, contentAlignment = Alignment.Center) {
                         if (ui.listening) ListeningRings(ui.voiceLevel, p.text)
-                        Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, outfit = ui.outfit, dizzyKey = ui.dizzy)
+                        Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, layers = ui.layers, dizzyKey = ui.dizzy)
                     }
                     Spacer(Modifier.width(4.dp))
                     AnimatedContent(

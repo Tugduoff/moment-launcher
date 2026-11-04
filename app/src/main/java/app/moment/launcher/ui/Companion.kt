@@ -135,7 +135,7 @@ private class Rig {
 @Composable
 fun Companion(
     mood: Mood, size: Dp = 96.dp, modifier: Modifier = Modifier, speakKey: Int = 0, hopKey: Int = 0,
-    outfit: androidx.compose.ui.graphics.ImageBitmap? = null, dizzyKey: Int = 0,
+    layers: List<androidx.compose.ui.graphics.ImageBitmap> = emptyList(), dizzyKey: Int = 0,
 ) {
     val rig = remember { Rig() }
     var frame by remember { mutableFloatStateOf(0f) }
@@ -204,8 +204,9 @@ fun Companion(
                 rotationZ = tilt + sin(t * 9f) * 14f * dz
             }
         ) {
-            if (outfit != null) Image(outfit, contentDescription = "Companion, dressed for this context", Modifier.fillMaxSize())
-            else Image(painterResource(body(mood)), contentDescription = "Companion, ${mood.name.lowercase()}", Modifier.fillMaxSize())
+            // The mood's body, then each accessory layer on top: nothing is redrawn when an item changes.
+            Image(painterResource(body(mood)), contentDescription = "Companion, ${mood.name.lowercase()}", Modifier.fillMaxSize())
+            layers.forEach { Image(it, contentDescription = null, Modifier.fillMaxSize()) }
             Canvas(Modifier.fillMaxSize()) { drawFace(rig, mood, happy, br) }
         }
         Canvas(Modifier.fillMaxSize()) {
