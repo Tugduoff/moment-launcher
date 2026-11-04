@@ -8,7 +8,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -162,7 +161,7 @@ private val cardShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bot
 
 private fun Modifier.card(p: Palette) = this.fillMaxWidth()
     .shadow(24.dp, cardShape, ambientColor = Color(0x1433261A), spotColor = Color(0x1433261A))
-    .background(p.card, cardShape).border(1.dp, p.stroke, cardShape).padding(20.dp).animateContentSize()
+    .background(p.card, cardShape).border(1.dp, p.stroke, cardShape).padding(20.dp)
 
 @Composable
 private fun ReadingCard(s: Timetable.State.Reading, p: Palette) {
@@ -183,7 +182,7 @@ private fun ReadingCard(s: Timetable.State.Reading, p: Palette) {
 private fun ReviewCard(vm: MomentViewModel, s: Timetable.State.Review, p: Palette) {
     val groups = s.result.groups
     var sel by remember(s) { mutableStateOf(groups.map { it.name }.toSet()) }
-    val maxH = (LocalConfiguration.current.screenHeightDp * 0.5f).dp
+    val maxH = (LocalConfiguration.current.screenHeightDp * 0.44f).dp
     Column(Modifier.card(p).heightIn(max = maxH), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("I found ${groups.size} thing${if (groups.size == 1) "" else "s"} in your week", 19, p.text, weight = 500, lineHeight = 26)
         if (s.result.summary.isNotBlank()) Text(s.result.summary, 14, p.text2, lineHeight = 20)
