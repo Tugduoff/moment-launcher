@@ -61,6 +61,9 @@ data class DemoState(
     val battery: Int? = null,
 )
 
+/** A briefing: a title, a short companion line, and a few facts (each one line). */
+data class Brief(val title: String, val line: String, val facts: List<String>, val evening: Boolean)
+
 data class UiState(
     val time: String = "",
     val date: String = "",
@@ -133,6 +136,8 @@ data class UiState(
     val searchFocus: Int = 0,
     /** What the companion reacts to on its own: "music", "rain", "late", "charging", or null. */
     val vibe: String? = null,
+    /** Morning or evening briefing card, shown once per half-day on the home screen. */
+    val brief: Brief? = null,
     val widgetSizes: Int = 0,
     /** Favourite contacts (first names shown), and the picker with every contact. */
     val favourites: List<String> = emptyList(),
@@ -264,6 +269,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             s.charging -> "charging"
             else -> null
         }
+        maybeBrief(s, c)
         if (vibe != _ui.value.vibe) {
             _ui.update { it.copy(vibe = vibe) }
             when (vibe) { "music" -> say("♪ Good one.", 3_000); "late" -> say("It's late… *yawn*", 3_500); else -> Unit }
@@ -840,6 +846,60 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---- Briefings ----------------------------------------------------------------------------
+
+    /**
+     * Morning (5–11 h): today at a glance. Evening (19–23 h): how today went and tomorrow's first
+     * thing. Once each per day, only on the live clock, and never over a card the user is reading.
+     */
+    private fun maybeBrief(s: Signals, c: Calendar) {
+        val st = _ui.value
+        if (st.brief != null || st.proposal != null || st.plan != null || st.showOnboarding || st.demo.touched) return
+        val hour = s.minuteOfDay / 60
+        val evening = when (hour) { in 5..10 -> false; in 19..22 -> true; else -> return }
+        val key = "brief_${if (evening) "pm" else "am"}"
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH).format(c.time)
+        if (uiPrefs.getString(key, "") == today) return
+        uiPrefs.edit().putString(key, today).apply()
+        _ui.update { it.copy(brief = buildBrief(s, c, evening)) }
+        updateMood()
+    }
+
+    fun briefNow(evening: Boolean) { val s = _ui.value.signals ?: return; _ui.update { it.copy(brief = buildBrief(s, now(), evening)) } }
+    fun dismissBrief() { _ui.update { it.copy(brief = null) }; updateMood() }
+
+    private fun buildBrief(s: Signals, c: Calendar, evening: Boolean): Brief {
+        val fmt = SimpleDateFormat("HH:mm", Locale.ENGLISH)
+        val day = Calendar.getInstance().apply { timeInMillis = c.timeInMillis; set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0) }
+        val dayStart = day.timeInMillis; val dayMs = 86_400_000L
+        val calOn = on("calendar")
+        val facts = mutableListOf<String>()
+        _ui.value.weather?.let { w -> facts += "${w.summary}, ${w.tempC}°" + if (w.rainSoon && !w.rainingNow) " · rain later" else "" }
+        if (!evening) {
+            val events = if (calOn) senses.events(c.timeInMillis, dayStart + dayMs) else emptyList()
+            if (events.isEmpty()) facts += if (calOn) "Nothing in your calendar today" else "Calendar is off (What I can see)"
+            else {
+                events.take(3).forEach { e -> facts += "${fmt.format(Date(e.start))} · ${e.title}" }
+                if (events.size > 3) facts += "+${events.size - 3} more"
+            }
+        } else {
+            s.steps?.let { facts += "%,d steps today".format(it) }
+            val done = if (calOn) senses.events(dayStart, c.timeInMillis).size else 0
+            if (calOn && done > 0) facts += "$done event${if (done > 1) "s" else ""} behind you"
+            val tomorrow = if (calOn) senses.events(dayStart + dayMs, dayStart + 2 * dayMs).firstOrNull() else null
+            facts += tomorrow?.let { "Tomorrow: ${fmt.format(Date(it.start))} · ${it.title}" } ?: "Tomorrow is open"
+        }
+        s.battery?.takeIf { it < 30 && !s.charging }?.let { facts += "Battery $it%, maybe charge" }
+        val line = when {
+            evening && (s.steps ?: 0) >= 10_000 -> "Big day. You earned the couch."
+            evening -> "Wind down soon. I'll keep watch."
+            s.raining -> "Grab a coat, it's wet out."
+            facts.any { it.contains("Nothing in your calendar") } -> "A free day. Want me to set one up?"
+            else -> "Here's your day."
+        }
+        return Brief(if (evening) "Good evening" else "Good morning", line, facts, evening)
+    }
+
     // ---- Home gestures ------------------------------------------------------------------------
 
     /** Swipe down: the notification shade, like on any launcher. */
@@ -871,6 +931,13 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Long-press on a widget: resize handles appear around it (tap outside or Done to finish). */
     fun editWidget(id: Int?) = _ui.update { it.copy(editingWidget = id) }
+    /** Pins a widget to the current context, or back to every context. */
+    fun toggleWidgetContext(id: Int) {
+        val here = _ui.value.context?.id ?: return
+        widgets.setContext(id, if (widgets.contextOf(id) == here) "" else here)
+        _ui.update { it.copy(widgetSizes = it.widgetSizes + 1) }
+    }
+
     fun resizeWidget(id: Int, heightDp: Int, quarters: Int, rowWidthDp: Int) {
         widgets.setSize(id, heightDp, quarters, rowWidthDp); _ui.update { it.copy(widgetSizes = it.widgetSizes + 1) }
     }
