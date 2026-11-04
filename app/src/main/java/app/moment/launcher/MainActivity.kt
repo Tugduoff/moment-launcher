@@ -71,6 +71,8 @@ class MainActivity : ComponentActivity() {
                 "postcard" -> vm.sharePostcard()
                 "weather" -> vm.refreshWeather()
                 "timetable" -> app.moment.launcher.ai.Timetable.startFromFile(vm, arg)
+                "wardrobe" -> vm.openWardrobe(arg == "1")
+                "contexts" -> vm.openContexts(arg == "1")
             }
         }
     }

@@ -131,7 +131,8 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             // Real signals OR the demo panel's fake ones.
             carBluetooth = d.carBluetooth || real.devices.value.car,
             headphones = d.headphones || real.devices.value.headphones,
-            raining = d.raining || (_ui.value.weather?.rainingNow == true),
+            // Real weather only counts on the live clock: a faked demo time keeps its own sky.
+            raining = d.raining || (_ui.value.weather?.rainingNow == true && d.clockOffsetMs == 0L),
         )
     }
 
