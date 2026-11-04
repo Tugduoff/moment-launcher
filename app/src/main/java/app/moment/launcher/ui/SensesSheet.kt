@@ -124,6 +124,16 @@ fun SensesSheet(vm: MomentViewModel, ui: UiState) {
                     if (key == "location" && on) Text(if (ui.homeSaved) "Home is set. Set it here again" else "Set home here", 14, p.text, underline = true,
                         modifier = Modifier.clickable { vm.saveHomeHere() }.padding(start = 4.dp, top = 2.dp, bottom = 4.dp))
                 }
+                Row(Modifier.fillMaxWidth().background(p.card, shape).border(1.dp, p.stroke, shape).padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Hold notifications while you focus", 17, p.text, weight = 500)
+                        Text("Hidden apps stay quiet; a summary when focus ends", 13, p.text2)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Switch(ui.holdNotifications, { vm.setHoldNotifications(it) },
+                        colors = SwitchDefaults.colors(checkedTrackColor = p.text, checkedThumbColor = Color(0xFFF7F4EE)))
+                }
                 Text("Only short labels ever leave the phone: an event title, a first name, \"away from home\", a city.", 13, p.text2,
                     modifier = Modifier.padding(top = 6.dp))
             }
