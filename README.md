@@ -48,6 +48,8 @@ The home screen holds four things: a clock, a companion, at most four rows for *
 
 **Wardrobe & postcards:** long-press the companion to open its wardrobe (what it wears, try-on suggestions, "Dress me up…"). **Share** asks Muse Image to paint a postcard of your companion, dressed as it is, in a scene for the current moment, ready to post.
 
+**Snap your timetable:** type "timetable" (or use the camera) and photograph your class schedule. Muse Spark reads the image and proposes a week of contexts ("Algorithms · Mon 9–11, Thu 10–12 · hides YouTube"). Tick what you want and tap *Add all*.
+
 **Contexts list:** type "contexts" to see every context with its trigger and the outfit the companion wears there.
 
 ## How Meta's models are used
@@ -55,6 +57,7 @@ The home screen holds four things: a clock, a companion, at most four rows for *
 | Model | Where | What it does |
 |---|---|---|
 | **Muse Spark agent** (tool calling) | `ai/Agent.kt` | Real OpenAI-style tool calling, up to 6 turns, parallel calls: `get_now`, `list_contexts`, `list_apps`, `propose_context`, `delete_context`, `open_app`, `wear`, `undress`, `remember`, `share_postcard`. Read-only and harmless tools run immediately; changes to the home screen are **staged** into one plan card. Remembered facts feed the next conversations. |
+| **Muse Spark vision** | `ai/Timetable.kt` | A photo of a timetable (image_url content part + JSON schema) becomes up to 10 activities with day/time slots, rooms, rows to show and apps to hide. Re-importing replaces, never duplicates. |
 | **Muse Spark + web_search** | `ai/Weather.kt` | Search grounding through the Responses API with a JSON schema: rain now / rain in 3 h / temperature / summary. Only the city name is sent. |
 | **Muse Spark** `muse-spark-1.3` | `ai/MuseJobs.kt` | One JSON-schema-constrained call per interaction (structured output, `reasoning_effort: minimal`, ~3–6 s). It turns a detected pattern or any sentence into one of five intents: a **context** (name, chip, trigger, ≤4 apps/actions, apps to hide, companion mood, palette, greeting, outfit), **open_app**, **dress**, **undress** or **answer**. It also sorts installed apps once (distracting, transport, payment…) so Focus knows what to hide. |
 | **Muse Image** `muse-image-1.0` | `art/generate_companion.sh`, `ai/Outfits.kt` | Generated the companion, its 8 expressions and four **faceless rig bodies** (plain, glasses, headphones, seatbelt) by *editing* one base image, so the character stays identical. **At runtime**, accepting a context or asking "play the guitar" sends the current body to `/images/edits`; the result is cut out on the phone (green-screen key + de-spill) and **stacks**: hat, then guitar, then sunglasses. **Postcards** (`ai/Postcard.kt`): the dressed companion, given a face, painted into a scene for the current moment. |
