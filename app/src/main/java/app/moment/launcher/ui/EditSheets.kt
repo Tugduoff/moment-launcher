@@ -287,19 +287,23 @@ private fun EffectCarousel(selected: Int, onPick: (Int) -> Unit) {
     androidx.compose.foundation.lazy.LazyRow(
         state = state, horizontalArrangement = Arrangement.spacedBy(10.dp),
         flingBehavior = androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior(state),
-        modifier = Modifier.fillMaxWidth().height(184.dp),
+        modifier = Modifier.fillMaxWidth().height(192.dp),
     ) {
         items(Effects.NAMES.size) { i ->
             val on = i == selected
             val shape = RoundedCornerShape(20.dp)
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // The chosen card: an orange ring outside the preview (a dark ring vanished on the night ground) and a check.
+                val ring = RoundedCornerShape(24.dp)
                 Box(
-                    Modifier.size(104.dp, 150.dp).clip(shape)
+                    Modifier.size(112.dp, 158.dp).border(3.dp, if (on) Color(HINT_DOT) else Color.Transparent, ring).padding(4.dp)
+                        .clip(shape)
                         .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFF1C2546), Color(0xFF3A2A5C))))
-                        .border(if (on) 3.dp else 1.dp, if (on) Color(0xFF2A2622) else Color(0x22000000), shape)
                         .clickable { onPick(i) },
                     contentAlignment = Alignment.Center,
                 ) {
+                    if (on) Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(22.dp).background(Color(HINT_DOT), androidx.compose.foundation.shape.CircleShape),
+                        contentAlignment = Alignment.Center) { LineIcon("M5 12L10 17L19 7", Color.White, 14.dp) }
                     when (i) {
                         0 -> Text("Follows\nthe context", 12, Color.White.copy(alpha = .8f))
                         1 -> Text("Calm", 13, Color.White.copy(alpha = .6f))
@@ -307,7 +311,7 @@ private fun EffectCarousel(selected: Int, onPick: (Int) -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(6.dp))
-                Text(Effects.NAMES[i], 13, Color(0xFF2A2622), weight = if (on) 500 else 400, maxLines = 1)
+                Text(Effects.NAMES[i], 13, if (on) Color(HINT_DOT) else Color(0xFF2A2622), weight = if (on) 600 else 400, maxLines = 1)
             }
         }
     }
