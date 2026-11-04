@@ -3,6 +3,7 @@ package app.moment.launcher
 import android.app.Application
 import android.util.Log
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.moment.launcher.ai.MuseClient
@@ -10,6 +11,7 @@ import app.moment.launcher.ai.MuseJobs
 import app.moment.launcher.ai.Outfits
 import app.moment.launcher.system.Widgets
 import app.moment.launcher.ui.Skin
+import app.moment.launcher.ui.Style
 import app.moment.launcher.ai.Agent
 import app.moment.launcher.ai.AgentHost
 import app.moment.launcher.ai.AgentPlan
@@ -128,6 +130,9 @@ data class UiState(
     /** Favourite contacts (first names shown), and the picker with every contact. */
     val favourites: List<String> = emptyList(),
     val contactPicker: Boolean = false,
+    /** Style sheet (font, clock), and accessory colours by layer slug. */
+    val showStyle: Boolean = false,
+    val tints: Map<String, Int> = emptyMap(),
     val allContacts: List<String> = emptyList(),
 )
 
@@ -169,6 +174,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     init {
         real.start(); body.start()
         Outfits.dropLegacy(app)
+        Style.current = Style.decode(app.getSharedPreferences("moment_ui", android.content.Context.MODE_PRIVATE).getString("style", null))
         Skin.current = Skin.decode(app.getSharedPreferences("moment_ui", android.content.Context.MODE_PRIVATE).getString("skin", null))
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { body.steps.collect { recompute() } }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) { body.shakes.collect { n -> if (n > 0) shaken() } }
@@ -237,7 +243,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             .takeIf { dismissStreak < 2 }
 
         val worn = wornIn(ctx)
-        val layers = worn.mapNotNull { layerImage(it) }
+        val layers = worn.mapNotNull { shownLayer(it) }
         worn.filter { layerImage(it) == null }.forEach { prefetch(it) }
         bodyMoments(s)
         val backdrop = backdropFor(ctx)
@@ -249,7 +255,8 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         }
         _ui.update {
             it.copy(
-                time = "%02d:%02d".format(c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE)),
+                time = if (Style.current.h12) "%d:%02d".format((c.get(Calendar.HOUR) + 11) % 12 + 1, c.get(Calendar.MINUTE))
+                    else "%02d:%02d".format(c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE)),
                 date = SimpleDateFormat("EEE d MMM", Locale.ENGLISH).format(c.time),
                 signals = s, context = ctx, items = items, hiddenApps = hidden, pattern = pattern, layers = layers, backdrop = backdrop,
                 nextEvent = event,
@@ -695,7 +702,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
 
     fun openWardrobe(open: Boolean) = _ui.update { it.copy(showWardrobe = open, showContexts = false) }
     fun openContexts(open: Boolean) = _ui.update { it.copy(showContexts = open, showWardrobe = false) }
-    fun layersFor(c: MomentContext) = wornIn(c).mapNotNull { layerImage(it) }
+    fun layersFor(c: MomentContext) = wornIn(c).mapNotNull { shownLayer(it) }
 
     /** Takes one accessory off: its layer just stops being drawn (and stays cached for next time). */
     fun removeAccessory(item: String) {
@@ -816,6 +823,26 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshWidgets() = _ui.update { it.copy(widgetIds = widgets.ids()) }
 
     /** Demo panel: show or hide the built-in sample contexts. */
+    fun openStyle(open: Boolean) = _ui.update { it.copy(showStyle = open, backdropMenu = false) }
+    fun setStyle(style: Style) { Style.current = style; uiPrefs.edit().putString("style", style.encode()).apply(); recompute() }
+
+    // Accessory colours: a hue per layer, applied on the phone.
+    private val tintedCache = mutableMapOf<Pair<String, Int>, androidx.compose.ui.graphics.ImageBitmap>()
+    private fun tints(): Map<String, Int> = org.json.JSONObject(uiPrefs.getString("tints", "{}") ?: "{}").let { o -> o.keys().asSequence().associateWith { o.optInt(it) } }
+    fun tintOf(item: String) = tints()[Outfits.slug(item)] ?: 0
+    fun setTint(item: String, tint: Int) {
+        val m = tints().toMutableMap().also { it[Outfits.slug(item)] = tint }
+        uiPrefs.edit().putString("tints", org.json.JSONObject(m as Map<*, *>).toString()).apply()
+        _ui.update { it.copy(tints = m) }; recompute()
+    }
+    /** The layer as worn: its own colour applied. */
+    private fun shownLayer(item: String): androidx.compose.ui.graphics.ImageBitmap? {
+        val base = layerImage(item) ?: return null
+        val t = tintOf(item); if (t == 0) return base
+        val slug = Outfits.slug(item)
+        return tintedCache.getOrPut(slug to t) { Skin.tint(slug.hashCode(), base.asAndroidBitmap(), t).asImageBitmap() }
+    }
+
     /** The companion's colours (wardrobe). */
     fun setSkin(skin: Skin) {
         Skin.current = skin

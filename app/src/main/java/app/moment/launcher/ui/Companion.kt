@@ -268,8 +268,25 @@ private fun DrawScope.drawFace(rig: Rig, mood: Mood, happy: Boolean, breath: Flo
         val gx = rig.gazeX * u * 0.012f; val gy = rig.gazeY * u * 0.012f
         val w = u * EYE_W; val h = max(u * 0.012f, u * EYE_H * (1f - blink))
         if (blink > 0.85f) { closedArc(cx + gx, cy + gy + u * 0.01f, up = false); return }
-        drawOval(INK, Offset(cx + gx - w / 2, cy + gy - h / 2), Size(w, h))
-        if (blink < 0.4f) drawCircle(Color.White.copy(alpha = 0.9f), u * 0.011f, Offset(cx + gx + w * 0.18f, cy + gy - h * 0.2f))
+        when (Skin.current.eyeStyle) {
+            1 -> { // Sparkly: bigger, two highlights.
+                val sw2 = w * 1.25f; val sh2 = h * 1.2f
+                drawOval(INK, Offset(cx + gx - sw2 / 2, cy + gy - sh2 / 2), Size(sw2, sh2))
+                if (blink < 0.4f) {
+                    drawCircle(Color.White.copy(alpha = 0.95f), u * 0.014f, Offset(cx + gx + sw2 * 0.16f, cy + gy - sh2 * 0.2f))
+                    drawCircle(Color.White.copy(alpha = 0.8f), u * 0.006f, Offset(cx + gx - sw2 * 0.18f, cy + gy + sh2 * 0.22f))
+                }
+            }
+            2 -> drawCircle(INK, u * 0.016f * (1f - blink * 0.8f), Offset(cx + gx, cy + gy)) // Dots.
+            3 -> { // Dreamy: half-lidded, the lower half of the eye under a flat lid.
+                drawArc(INK, 0f, 180f, true, Offset(cx + gx - w / 2, cy + gy - h / 2), Size(w, h))
+                drawLine(INK, Offset(cx + gx - w * 0.62f, cy + gy), Offset(cx + gx + w * 0.62f, cy + gy), u * 0.012f, StrokeCap.Round)
+            }
+            else -> {
+                drawOval(INK, Offset(cx + gx - w / 2, cy + gy - h / 2), Size(w, h))
+                if (blink < 0.4f) drawCircle(Color.White.copy(alpha = 0.9f), u * 0.011f, Offset(cx + gx + w * 0.18f, cy + gy - h * 0.2f))
+            }
+        }
     }
 
     val lx = u * EYE_L_X; val rx = u * EYE_R_X; val ey = u * EYE_Y
@@ -327,6 +344,18 @@ private fun DrawScope.drawFace(rig: Rig, mood: Mood, happy: Boolean, breath: Flo
             drawOval(INK.copy(alpha = 0.7f), Offset(mx - u * 0.012f * s, my), Size(u * 0.024f * s, u * 0.016f * s))
         }
         mood == Mood.THINKING -> drawLine(INK, Offset(mx - u * 0.01f, my + u * 0.008f), Offset(mx + u * 0.03f, my), sw, StrokeCap.Round)
+        Skin.current.mouth == 1 -> { // Cat: a little "w".
+            val w = u * 0.035f; val d = u * 0.012f
+            val p = Path().apply {
+                moveTo(mx - w, my); quadraticTo(mx - w / 2, my + d * 2, mx, my)
+                quadraticTo(mx + w / 2, my + d * 2, mx + w, my)
+            }
+            drawPath(p, INK, style = stroke)
+        }
+        Skin.current.mouth == 2 -> { // Grin: open and happy.
+            val w = u * 0.075f; val d = u * 0.034f
+            drawPath(Path().apply { moveTo(mx - w / 2, my - d * 0.2f); quadraticTo(mx, my + d * 1.6f, mx + w / 2, my - d * 0.2f); close() }, INK)
+        }
         mood == Mood.GLASSES -> smile(u * 0.05f, u * 0.006f)
         else -> smile(u * 0.07f, u * 0.014f)
     }

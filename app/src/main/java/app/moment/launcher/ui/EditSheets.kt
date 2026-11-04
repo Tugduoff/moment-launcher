@@ -144,6 +144,7 @@ fun BackdropSheet(vm: MomentViewModel, ui: UiState) {
             Option(Icons.SPARKLE, "Paint again", p) { vm.repaint(null) }
             Option(PHOTO, "Use my photo", p) { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
             if (ui.backdrop != null) Option(Icons.CLOSE, "Remove", p) { vm.removeBackdrop() }
+            Option(Icons.SPARKLE, "Style: font and clock", p) { vm.openStyle(true) }
             if (ui.widgetIds.size < app.moment.launcher.system.Widgets.MAX) Option(PLUS, "Add a widget", p) { vm.openWidgetPicker(true) }
             ui.widgetIds.forEach { id -> Option(Icons.CLOSE, "Remove widget: ${vm.widgets.label(id)}", p) { vm.removeWidget(id) } }
         }
@@ -248,4 +249,27 @@ private fun sizeText(ctx: android.content.Context, info: android.appwidget.AppWi
     val d = ctx.resources.displayMetrics.density
     val w = ((info.minWidth / d + 30) / 70).toInt().coerceAtLeast(1); val h = ((info.minHeight / d + 30) / 70).toInt().coerceAtLeast(1)
     return "$w × $h"
+}
+
+/** Font for the whole home screen, clock weight and size, 12/24 h: all live, nothing leaves the phone. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun StyleSheet(vm: MomentViewModel, ui: UiState) {
+    if (!ui.showStyle) return
+    val p = palette(Look.CREAM)
+    val st = Style.current
+    ModalBottomSheet(onDismissRequest = { vm.openStyle(false) }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SHEET) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp).padding(bottom = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Style", 28, p.text, weight = 500)
+            Text(ui.time.ifBlank { "12:34" }, Style.SIZES[st.clockSize].second / 2 + 20, p.text, weight = Style.WEIGHTS[st.clockWeight].second)
+            Text("Font", 13, p.text2)
+            ChoiceRow(Style.FONTS, st.font, p, fontOf = { Style.family(it) }) { vm.setStyle(st.copy(font = it)) }
+            Text("Clock weight", 13, p.text2)
+            ChoiceRow(Style.WEIGHTS.map { it.first }, st.clockWeight, p) { vm.setStyle(st.copy(clockWeight = it)) }
+            Text("Clock size", 13, p.text2)
+            ChoiceRow(Style.SIZES.map { it.first }, st.clockSize, p) { vm.setStyle(st.copy(clockSize = it)) }
+            Text("Time format", 13, p.text2)
+            ChoiceRow(listOf("24 h", "12 h"), if (st.h12) 1 else 0, p) { vm.setStyle(st.copy(h12 = it == 1)) }
+        }
+    }
 }

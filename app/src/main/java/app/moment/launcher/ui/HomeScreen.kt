@@ -192,7 +192,10 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                     interactionSource = remember { MutableInteractionSource() }, indication = null,
                     onClick = {}, onLongClick = { vm.openDemo(true) },
                 )) {
-                    Text(ui.time, 88, p.text, weight = 300, letterSpacing = -2.64, lineHeight = 96)
+                    Style.current.let { st ->
+                        val size = Style.SIZES[st.clockSize].second
+                        Text(ui.time, size, p.text, weight = Style.WEIGHTS[st.clockWeight].second, letterSpacing = -size * 0.03, lineHeight = (size * 1.09).toInt())
+                    }
                     Spacer(Modifier.height(2.dp))
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         Text(ui.date, 17, p.text2)
