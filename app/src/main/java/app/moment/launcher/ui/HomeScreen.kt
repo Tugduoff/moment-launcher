@@ -77,6 +77,7 @@ import app.moment.launcher.UiState
 import app.moment.launcher.data.Look
 import app.moment.launcher.data.NowItem
 import kotlin.math.cos
+import java.util.Locale
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -171,7 +172,10 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
             )) {
                 Text(ui.time, 88, p.text, weight = 300, letterSpacing = -2.64, lineHeight = 96)
                 Spacer(Modifier.height(2.dp))
-                Text(ui.date, 17, p.text2)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(ui.date, 17, p.text2)
+                    StatusGlyphs(ui, p)
+                }
             }
             Spacer(Modifier.weight(1f))
 
@@ -219,7 +223,7 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                 ) { b ->
                     when (b) {
                         "" -> Spacer(Modifier.width(1.dp))
-                        "#caption" -> Text("Search is hidden while driving", 13, p.text2)
+                        "#caption" -> Spacer(Modifier.width(1.dp))
                         else -> Bubble(b, p, dot = ui.bubbleIsIdea) { vm.tapCompanion() }
                     }
                 }
@@ -233,6 +237,38 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
 }
 
 // ---- Pieces ------------------------------------------------------------------------------------
+
+private object Glyph {
+    const val SUN = "M12 8A4 4 0 1 1 12 16A4 4 0 1 1 12 8Z M12 2V4 M12 20V22 M4.9 4.9L6.3 6.3 M17.7 17.7L19.1 19.1 M2 12H4 M20 12H22 M4.9 19.1L6.3 17.7 M17.7 6.3L19.1 4.9"
+    const val CLOUD = "M7 18H17A4 4 0 0 0 17 10A5.5 5.5 0 0 0 6.5 11A3.5 3.5 0 0 0 7 18Z"
+    const val RAIN = "M7 14H17A4 4 0 0 0 17 6A5.5 5.5 0 0 0 6.5 7A3.5 3.5 0 0 0 7 14Z M8 17L7 20 M12 17L11 20 M16 17L15 20"
+    const val SNOW = "M7 14H17A4 4 0 0 0 17 6A5.5 5.5 0 0 0 6.5 7A3.5 3.5 0 0 0 7 14Z M8 18V18.5 M12 19V19.5 M16 18V18.5"
+    // Two footprints.
+    const val STEPS = "M7 3C9 3 10 5 10 8C10 11 9 13 7 13C5 13 4 11 4 8C4 5 5 3 7 3Z M5 16H9 M17 8C19 8 20 10 20 13C20 16 19 18 17 18C15 18 14 16 14 13C14 10 15 8 17 8Z M15 21H19"
+    const val BATTERY = "M3 8H17A1 1 0 0 1 18 9V15A1 1 0 0 1 17 16H3A1 1 0 0 1 2 15V9A1 1 0 0 1 3 8Z M21 11V13 M5 11V13"
+}
+
+/** Weather, steps and a low battery as small glyphs beside the date: no sentences. */
+@Composable
+private fun StatusGlyphs(ui: UiState, p: Palette) {
+    val w = ui.weather?.takeIf { ui.demo.clockOffsetMs == 0L }
+    val s = ui.signals
+    @Composable fun item(icon: String, value: String) = Row(verticalAlignment = Alignment.CenterVertically) {
+        LineIcon(icon, p.text2, 18.dp, stroke = 2.2f); Spacer(Modifier.width(5.dp)); Text(value, 17, p.text2, maxLines = 1)
+    }
+    if (w != null) {
+        val sum = w.summary.lowercase()
+        val icon = when {
+            w.rainingNow || "rain" in sum || "drizzle" in sum || "shower" in sum -> Glyph.RAIN
+            "snow" in sum -> Glyph.SNOW
+            "sun" in sum || "clear" in sum -> Glyph.SUN
+            else -> Glyph.CLOUD
+        }
+        item(icon, "${w.tempC}°")
+    }
+    s?.steps?.takeIf { it > 0 }?.let { item(Glyph.STEPS, if (it >= 1000) "%.1fk".format(Locale.ENGLISH, it / 1000f).replace(".0k", "k") else "$it") }
+    s?.battery?.takeIf { it <= 20 && !s.charging }?.let { item(Glyph.BATTERY, "$it%") }
+}
 
 @Composable
 fun Text(
@@ -367,7 +403,10 @@ private fun ProposalCard(vm: MomentViewModel, ui: UiState, p: Palette) {
                     LineIcon(Icons.CLOSE, p.text2, 18.dp, modifier = Modifier.clickable { vm.editProposal(removeItem = i) })
                 }
             }
-            if (prop.context.hide.isNotEmpty()) Text("Hides: " + prop.context.hide.joinToString(", "), 13, p.text2)
+            if (prop.context.hide.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
+                LineIcon(Icons.LOCK, p.text2, 14.dp); Spacer(Modifier.width(6.dp))
+                Text(prop.context.hide.joinToString(", "), 13, p.text2, maxLines = 1)
+            }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 2.dp)) {
             Button("Accept", Btn.Primary, p) { vm.acceptProposal() }
@@ -436,7 +475,6 @@ private fun SearchResults(vm: MomentViewModel, ui: UiState, p: Palette) {
                 Text(app.label, 24, p.text, maxLines = 1)
             }
         }
-        if (ui.results.isEmpty()) Text("No app called \"${ui.query.trim()}\"", 14, p.text2, modifier = Modifier.padding(vertical = 8.dp))
         val shape = RoundedCornerShape(22.dp)
         Row(
             Modifier.fillMaxWidth().background(p.pill, shape).border(1.dp, p.stroke, shape)

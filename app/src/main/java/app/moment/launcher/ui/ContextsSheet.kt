@@ -102,10 +102,6 @@ fun ContextsSheet(vm: MomentViewModel, ui: UiState) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp, bottom = 6.dp)) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Contexts", 34, p.text, weight = 500)
-                    Text(
-                        if (ui.contexts.isEmpty()) "None saved yet, ${all.size} built in" else "${ui.contexts.size} saved on this phone, ${all.size - ui.contexts.size} built in",
-                        14, p.text2,
-                    )
                 }
                 Box(
                     Modifier.size(44.dp).background(p.pill, CircleShape).border(1.dp, p.stroke, CircleShape)
@@ -114,10 +110,6 @@ fun ContextsSheet(vm: MomentViewModel, ui: UiState) {
                 ) { LineIcon(Icons.CLOSE, p.text, 20.dp) }
             }
 
-            Text(
-                if (ui.pinnedId != null) "Picked by hand. Tap it again to go back to automatic." else "Tap one to use it now.",
-                14, p.text2,
-            )
             all.forEach { c -> ContextCard(vm, c, p, active = ui.context?.id == c.id) }
 
             val dashed = RoundedCornerShape(22.dp)
@@ -127,11 +119,8 @@ fun ContextsSheet(vm: MomentViewModel, ui: UiState) {
             ) {
                 LineIcon(Icons.SPARKLE, p.text2, 16.dp)
                 Spacer(Modifier.width(8.dp))
-                Text("New context: just type a sentence", 14, p.text2)
+                Text("New: just say it", 14, p.text2)
             }
-            Text(
-                "Swipe sideways on the home screen to open this list.", 13, p.text2, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-            )
         }
         }
     }
@@ -141,7 +130,7 @@ fun ContextsSheet(vm: MomentViewModel, ui: UiState) {
 private fun ContextCard(vm: MomentViewModel, c: MomentContext, p: Palette, active: Boolean) {
     val shape = RoundedCornerShape(24.dp)
     val outfit = c.outfit.ifBlank { BUILT_IN_OUTFIT[c.id].orEmpty() }
-    val chip = if (active) "now" else if (c.builtIn) "built in" else if (c.chip.contains("·")) c.chip.substringAfter("·").trim() else ""
+    val chip = if (active) "now" else ""
     Row(
         Modifier.fillMaxWidth().background(p.card, shape).border(if (active) 2.dp else 1.dp, if (active) p.text else p.stroke, shape)
             .clickable { vm.useContext(c.id) }.padding(12.dp),

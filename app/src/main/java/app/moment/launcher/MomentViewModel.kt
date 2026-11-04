@@ -193,9 +193,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         _ui.update {
             it.copy(
                 time = "%02d:%02d".format(c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE)),
-                date = SimpleDateFormat("EEEE d MMMM", Locale.ENGLISH).format(c.time) +
-                    (_ui.value.weather?.takeIf { _ui.value.demo.clockOffsetMs == 0L }?.let { " · ${it.summary}" } ?: "") +
-                    (s.steps?.takeIf { it > 0 }?.let { " · " + "%,d".format(Locale.ENGLISH, it) + " steps" } ?: ""),
+                date = SimpleDateFormat("EEE d MMM", Locale.ENGLISH).format(c.time),
                 signals = s, context = ctx, items = items, hiddenApps = hidden, pattern = pattern, outfit = outfit, backdrop = backdrop,
                 wardrobe = store.wardrobe(), contexts = user,
             )
@@ -243,7 +241,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         when {
             st.thinking || st.proposal != null -> Unit
             st.pattern != null -> draftFromPattern()
-            st.context?.id == "home" -> say("All calm. Long-press me for my wardrobe, or ask me anything below.")
+            st.context?.id == "home" -> say("All calm.")
             else -> say(st.context?.reason?.ifBlank { null } ?: whyText(st))
         }
     }
@@ -354,7 +352,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         _ui.update { it.copy(plan = null) }
         lastContextId = null
         recompute()
-        say("Done! ${plan.steps.size} change${if (plan.steps.size > 1) "s" else ""} applied.")
+        say("Done!")
         dressFor?.let { dress(it) }
     }
 
@@ -384,7 +382,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
                 // Rules-only fallback: never leave the user with nothing.
                 val s = _ui.value.signals
                 if (_ui.value.pattern != null && s != null) _ui.update { it.copy(proposal = fallbackProposal(s)) }
-                else say("I couldn't reach Muse just now. Try again?")
+                else say("No signal. Try again?")
                 _ui.update { it.copy(museStatus = "Muse error: ${e.message?.take(60)}") }
             }
             updateMood()
@@ -408,7 +406,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         _ui.update { it.copy(proposal = null, editing = false) }
         lastContextId = null // force a greeting for the new context
         recompute()
-        if (_ui.value.context?.id != p.context.id) say("Saved '${p.context.name}'. I'll show it when it fits.")
+        if (_ui.value.context?.id != p.context.id) say("Saved.")
         if (p.context.outfit.isNotBlank()) dress(p.context)
     }
 
@@ -422,7 +420,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             .onSuccess { w ->
                 _ui.update { it.copy(weather = w) }
                 recompute()
-                if (w.rainSoon && !w.rainingNow && !rainWarned) { rainWarned = true; say("Rain is coming in the next hours. Umbrella?", 6_000) }
+                if (w.rainSoon && !w.rainingNow && !rainWarned) { rainWarned = true; say("Rain soon. Umbrella?", 6_000) }
             }
             .onFailure { Log.e("Moment", "weather failed", it) }
     }
@@ -434,7 +432,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             else -> "${c.name.lowercase()} (${c.chip.lowercase()}), in Paris"
         }
         _ui.update { it.copy(dressing = true) }; updateMood()
-        say("Hold still… painting a postcard of us.", 30_000)
+        say("Painting us…", 30_000)
         val appCtx = getApplication<Application>()
         val outfit = (if (c != null && !c.builtIn) Outfits.load(appCtx, c.id) else null) ?: Outfits.load(appCtx, WARDROBE)
         runCatching { Postcard.make(appCtx, outfit, scene, store.wardrobe()) }
@@ -593,7 +591,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         dismissStreak++
         _ui.update { it.copy(proposal = null, editing = false) }
         recompute()
-        if (dismissStreak >= 2) say("Got it. I'll stay quiet for a while.")
+        if (dismissStreak >= 2) say("Okay, quiet.")
     }
 
     fun toggleEdit() = _ui.update { it.copy(editing = !it.editing) }
@@ -634,7 +632,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             for (sec in 10 downTo 1) { _ui.update { it.copy(openAnywaySeconds = sec) }; delay(1_000) }
             _ui.update { it.copy(openAnywaySeconds = null, focusUnlocked = true) }
-            say("Okay, they're back in search until you leave.")
+            say("Back in search.")
         }
     }
 
@@ -703,12 +701,12 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
                 "home" -> "a cozy morning corner of a Paris apartment, a plant on the window sill"
                 else -> "${c.name.lowercase()}${if (c.chip.isNotBlank()) " (" + c.chip.lowercase() + ")" else ""}, in Paris"
             }
-            say(if (wish == null) "I'm painting you a background for ${c.name}…" else "Painting it…", 30_000)
+            say("Painting…", 30_000)
             runCatching { Backdrops.paint(getApplication(), c.id, subject) }
                 .onSuccess { bmp ->
                     backdropCache[c.id] = bmp.asImageBitmap()
                     _ui.update { it.copy(hop = it.hop + 1) }
-                    say("There. A background for ${c.name}.", 5_000)
+                    say("There.", 3_000)
                     recompute()
                 }
                 .onFailure { Log.e("Moment", "backdrop", it); say("My brushes slipped. Try again later?", 4_000) }
@@ -729,22 +727,22 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         if (reached != null && uiPrefs.getInt("milestone_$day", 0) < reached) {
             uiPrefs.edit().putInt("milestone_$day", reached).apply()
             _ui.update { it.copy(hop = it.hop + 1) }
-            say(if (reached >= 10_000) "10,000 steps today. Legend." else "5,000 steps already. Nice walk.", 6_000)
+            say(if (reached >= 10_000) "10,000 steps!" else "5,000 steps!", 5_000)
         }
         val b = s.battery
         if (b != null && b <= 15 && !s.charging && !lowBatteryWarned) {
             lowBatteryWarned = true
-            say("Battery at $b%. Maybe plug me in soon?", 6_000)
+            say("Battery $b%. Charge me?", 6_000)
         } else if (b != null && (b > 20 || s.charging)) lowBatteryWarned = false
     }
 
     fun replayOnboarding() = _ui.update { it.copy(showOnboarding = true, demoOpen = false) }
-    fun backToAutomatic() { _ui.update { it.copy(pinnedId = null) }; recompute(); say("Back to automatic.", 3_000) }
+    fun backToAutomatic() { _ui.update { it.copy(pinnedId = null) }; recompute(); say("Automatic.", 3_000) }
 
     fun finishOnboarding() {
         uiPrefs.edit().putBoolean("onboarded", true).apply()
         _ui.update { it.copy(showOnboarding = false) }
-        say("Hi! I'll sleep until I notice something. Ask me anything below.", 6_000)
+        say("Hi!", 6_000)
     }
 
     fun liveClock() { _ui.update { it.copy(demo = DemoState()) }; recompute() }
@@ -762,7 +760,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         _ui.update { it.copy(pinnedId = if (back) null else id, pinnedUntil = System.currentTimeMillis() + 60 * 60_000L, showContexts = false) }
         recompute()
         val name = _ui.value.context?.name ?: return
-        say(if (back) "Back to automatic." else "$name for the next hour. Tap it again in the list to go back to automatic.", 5_000)
+        say(if (back) "Automatic." else "$name, for an hour.", 3_000)
     }
 
     fun seedVisits() {

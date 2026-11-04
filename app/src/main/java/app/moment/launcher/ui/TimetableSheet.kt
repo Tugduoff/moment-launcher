@@ -120,7 +120,7 @@ fun TimetableSearchRow(vm: MomentViewModel, query: String, p: Palette) {
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text("Snap your timetable", 17, p.text, weight = 500, maxLines = 1)
-            Text("Pick a photo, I'll build your week", 13, p.text2, maxLines = 1)
+            Text("A photo becomes your week", 13, p.text2, maxLines = 1)
         }
         Box(
             Modifier.size(44.dp).border(1.dp, p.stroke, CircleShape).clickable { pickers.camera() },
@@ -173,7 +173,7 @@ private fun ReadingCard(s: Timetable.State.Reading, p: Palette) {
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Reading your timetable", 19, p.text, weight = 500, lineHeight = 26)
-            Text("Muse Spark is looking at your week", 14, p.text2, lineHeight = 20, modifier = Modifier.alpha(pulse.value))
+            Text("Muse Spark", 14, p.text2, lineHeight = 20, modifier = Modifier.alpha(pulse.value))
         }
     }
 }
@@ -184,8 +184,7 @@ private fun ReviewCard(vm: MomentViewModel, s: Timetable.State.Review, p: Palett
     var sel by remember(s) { mutableStateOf(groups.map { it.name }.toSet()) }
     val maxH = (LocalConfiguration.current.screenHeightDp * 0.44f).dp
     Column(Modifier.card(p).heightIn(max = maxH), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("I found ${groups.size} thing${if (groups.size == 1) "" else "s"} in your week", 19, p.text, weight = 500, lineHeight = 26)
-        if (s.result.summary.isNotBlank()) Text(s.result.summary, 14, p.text2, lineHeight = 20)
+        Text("Your week", 19, p.text, weight = 500, lineHeight = 26)
         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             groups.forEach { g ->
                 GroupRow(g, g.name in sel, p) { sel = if (g.name in sel) sel - g.name else sel + g.name }
@@ -216,7 +215,6 @@ private fun GroupRow(g: TimetableGroup, checked: Boolean, p: Palette, onToggle: 
         Column(Modifier.weight(1f).alpha(if (checked) 1f else .55f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(g.name, 17, p.text, weight = 500, maxLines = 1)
             Text(g.slotsText, 13, p.text2, maxLines = 2)
-            if (g.showsText.isNotBlank()) Text(g.showsText, 13, p.text2, maxLines = 1)
         }
     }
 }

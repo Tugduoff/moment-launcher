@@ -22,7 +22,7 @@ object ContextEngine {
     val driving = MomentContext(
         id = "driving", name = "Driving", chip = "Driving", trigger = Trigger(bluetooth = "car"), builtIn = true,
         mood = Mood.SEATBELT, look = Look.CAR, bigButtons = true, hideSearch = true,
-        greeting = "Eyes on the road. Three buttons only.",
+        greeting = "",
         items = listOf(
             NowItem("Navigation", "Home", "navigate", "Home"),
             NowItem("Music", "Resume playlist", "music", "Spotify"),
@@ -34,7 +34,7 @@ object ContextEngine {
         id = "night", name = "Late night", chip = "Late night · away from home",
         trigger = Trigger(place = Place.AWAY.label, startHour = 22, endHour = 5), builtIn = true,
         mood = Mood.SLEEPY, look = Look.NIGHT,
-        greeting = "Getting late. Here's how to get home.",
+        greeting = "Get home safe.",
         reason = "It's late and you're away from home.",
         items = listOf(
             NowItem("Book a ride home", "Opens Uber at your location", "ride"),
@@ -48,7 +48,7 @@ object ContextEngine {
         id = "study", name = "Study", chip = "Study · library",
         trigger = Trigger(place = Place.LIBRARY.label), builtIn = true, focus = true,
         mood = Mood.GLASSES, look = Look.STUDY, hide = hidden,
-        greeting = "Focus time. I hid the noisy apps.",
+        greeting = "Focus.",
         items = listOf(
             NowItem("Notion", "Algorithms notes"),
             NowItem("Course portal", "", "web", "https://moodle.org"),
@@ -61,14 +61,14 @@ object ContextEngine {
         id = "game", name = "Game mode", chip = "Game mode",
         trigger = Trigger(bluetooth = "headphones", startHour = 19, endHour = 2), builtIn = true,
         mood = Mood.HEADPHONES, look = Look.GAME,
-        greeting = "Squad's online. Have fun!",
+        greeting = "Have fun!",
         items = listOf(NowItem("Discord", "Squad voice"), NowItem("Steam"), NowItem("Twitch"), NowItem("Brawl Stars")),
     )
 
     val rain = MomentContext(
         id = "rain", name = "Rainy afternoon", chip = "Rainy afternoon", trigger = Trigger(), builtIn = true,
         mood = Mood.SLEEPY, look = Look.RAIN,
-        greeting = "Rainy day. Something cozy?",
+        greeting = "Cozy day.",
         items = listOf(NowItem("Spotify", "Rainy day mix", "music", "Spotify"), NowItem("Notes"), NowItem("Books")),
     )
 
