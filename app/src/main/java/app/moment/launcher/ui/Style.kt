@@ -6,8 +6,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.font.FontFamily
 
 /** Home screen typography: font, clock weight and size, 12/24 h. Chosen in "Style", saved by the ViewModel. */
-data class Style(val font: Int = 0, val clockWeight: Int = 0, val clockSize: Int = 1, val h12: Boolean = false) {
-    fun encode() = "$font,$clockWeight,$clockSize,${if (h12) 1 else 0}"
+data class Style(val font: Int = 0, val clockWeight: Int = 0, val clockSize: Int = 1, val h12: Boolean = false, val effect: Int = 0) {
+    fun encode() = "$font,$clockWeight,$clockSize,${if (h12) 1 else 0},$effect"
 
     companion object {
         val FONTS = listOf("DM Sans", "Serif", "Mono", "Classic sans", "Handwritten")
@@ -20,8 +20,9 @@ data class Style(val font: Int = 0, val clockWeight: Int = 0, val clockSize: Int
         }
 
         fun decode(s: String?): Style {
-            val v = s?.split(',')?.mapNotNull { it.toIntOrNull() }?.takeIf { it.size == 4 } ?: return Style()
-            return Style(v[0].coerceIn(FONTS.indices), v[1].coerceIn(WEIGHTS.indices), v[2].coerceIn(SIZES.indices), v[3] == 1)
+            val v = s?.split(',')?.mapNotNull { it.toIntOrNull() }?.takeIf { it.size >= 4 } ?: return Style()
+            return Style(v[0].coerceIn(FONTS.indices), v[1].coerceIn(WEIGHTS.indices), v[2].coerceIn(SIZES.indices), v[3] == 1,
+                v.getOrElse(4) { 0 }.coerceIn(Effects.NAMES.indices))
         }
 
         var current by mutableStateOf(Style())

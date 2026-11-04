@@ -268,6 +268,9 @@ fun StyleSheet(vm: MomentViewModel, ui: UiState) {
             ChoiceRow(Style.WEIGHTS.map { it.first }, st.clockWeight, p) { vm.setStyle(st.copy(clockWeight = it)) }
             Text("Clock size", 13, p.text2)
             ChoiceRow(Style.SIZES.map { it.first }, st.clockSize, p) { vm.setStyle(st.copy(clockSize = it)) }
+            Text("Effect", 13, p.text2)
+            ChoiceRow(Effects.NAMES, st.effect, p) { vm.setStyle(st.copy(effect = it)) }
+            Text("Auto follows the context (rain, stars, glow). The sparkle by the clock pauses any effect.", 12, p.text2)
             Text("Time format", 13, p.text2)
             ChoiceRow(listOf("24 h", "12 h"), if (st.h12) 1 else 0, p) { vm.setStyle(st.copy(h12 = it == 1)) }
         }

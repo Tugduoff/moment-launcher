@@ -126,6 +126,8 @@ class MainActivity : ComponentActivity() {
                 "steps" -> vm.setDemo { it.copy(steps = arg.toIntOrNull()) }
                 "battery" -> vm.setDemo { it.copy(battery = arg.toIntOrNull()) }
                 "contexts" -> vm.openContexts(arg == "1")
+                "effect" -> arg.toIntOrNull()?.let { vm.setStyle(app.moment.launcher.ui.Style.current.copy(effect = it)) }
+                "style" -> vm.openStyle(arg != "0")
             }
         }
     }

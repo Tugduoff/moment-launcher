@@ -237,7 +237,9 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         val base = (manual ?: ctx.items.sortedByDescending { store.tapCount(ctx.id, it.label) }).map { item ->
             if (item.kind == "call" && friend != null) item.copy(label = "Call ${friend.name.substringBefore(' ')}", detail = "", target = friend.number) else item
         }
-        val items = if (event != null && !ctx.bigButtons) (listOf(eventRow(event)) + base).take(4) else base
+        // The next event is a small line under the date, never one of the context's rows:
+        // it used to fill any free row slot, which looked like a row the user never added.
+        val items = base
         eventNudge(event)
         val pattern = ContextEngine.patternAt(s, store.visits(), user, store.dismissedPlaces())
             .takeIf { dismissStreak < 2 }
@@ -1001,6 +1003,8 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun cityName(): String = if (on("location")) approx()?.let { senses.city(it) } ?: CITY else CITY
+
+    fun openEvent() { _ui.value.nextEvent?.let { phone.run(eventRow(it), _ui.value.apps) } }
 
     private fun eventRow(e: Senses.Event): NowItem {
         val t = SimpleDateFormat("HH:mm", Locale.ENGLISH).format(Date(e.start))

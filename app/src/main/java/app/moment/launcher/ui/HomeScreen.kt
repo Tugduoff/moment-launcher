@@ -173,10 +173,13 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                 .62f to veil.copy(alpha = .55f), .78f to veil.copy(alpha = .86f), 1f to veil.copy(alpha = .94f),
             )))
         }
-        if (!ui.effectsOff) when (ctx.look) {
-            Look.GAME -> GameGlow()
-            Look.RAIN -> RainOverlay()
-            Look.NIGHT -> NightStars()
+        val effect = Style.current.effect
+        if (!ui.effectsOff) when {
+            effect == 1 -> Unit
+            effect > 1 -> EffectLayer(effect)
+            ctx.look == Look.GAME -> GameGlow()
+            ctx.look == Look.RAIN -> RainOverlay()
+            ctx.look == Look.NIGHT -> NightStars()
             else -> Unit
         }
         Column(
@@ -201,12 +204,17 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                         Text(ui.date, 17, p.text2)
                         StatusGlyphs(ui, p)
                         // Rain, stars or glow on screen: one small button turns them off (and back on).
-                        if (ctx.look == Look.RAIN || ctx.look == Look.NIGHT || ctx.look == Look.GAME) {
+                        if (Style.current.effect > 1 || (Style.current.effect == 0 && (ctx.look == Look.RAIN || ctx.look == Look.NIGHT || ctx.look == Look.GAME))) {
                             Spacer(Modifier.weight(1f))
                             Box(Modifier.size(32.dp).clickable { vm.toggleEffects() }, contentAlignment = Alignment.Center) {
                                 LineIcon(Icons.SPARKLE, p.text2.copy(alpha = if (ui.effectsOff) .35f else .8f), 18.dp)
                             }
                         }
+                    }
+                    ui.nextEvent?.let { e ->
+                        val at = java.text.SimpleDateFormat("HH:mm", java.util.Locale.ENGLISH).format(java.util.Date(e.start))
+                        Text("$at · ${e.title}", 15, p.text2, maxLines = 1,
+                            modifier = Modifier.padding(top = 4.dp).clickable { vm.openEvent() })
                     }
                 }
             }
