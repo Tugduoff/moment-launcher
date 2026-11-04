@@ -1,4 +1,3 @@
-import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -8,8 +7,14 @@ plugins {
 
 // The Meta Model API key comes from the environment or the gitignored .env at the repo root.
 val museKey: String = System.getenv("MODEL_API_KEY") ?: run {
-    val f = rootProject.file(".env")
-    if (!f.exists()) "" else Properties().apply { f.inputStream().use { load(it) } }.getProperty("MODEL_API_KEY", "")
+    listOf(rootProject.file(".env"), rootProject.file("../.env"))
+        .filter { it.exists() && it.length() > 0 }
+        .map { f ->
+            f.readLines().map { it.trim().removePrefix("export ").trim() }
+                .firstOrNull { it.startsWith("MODEL_API_KEY") }
+                ?.substringAfter("=")?.trim()?.trim('"', '\'') ?: ""
+        }
+        .firstOrNull { it.isNotBlank() } ?: ""
 }
 
 android {

@@ -1,0 +1,345 @@
+package app.moment.launcher
+
+import android.app.Application
+import android.util.Log
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import app.moment.launcher.ai.MuseClient
+import app.moment.launcher.ai.MuseJobs
+import app.moment.launcher.data.ContextEngine
+import app.moment.launcher.data.ContextStore
+import app.moment.launcher.data.MomentContext
+import app.moment.launcher.data.Mood
+import app.moment.launcher.data.NowItem
+import app.moment.launcher.data.Place
+import app.moment.launcher.data.Proposal
+import app.moment.launcher.data.Signals
+import app.moment.launcher.data.Trigger
+import app.moment.launcher.system.InstalledApp
+import app.moment.launcher.system.Phone
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
+
+data class DemoState(
+    val clockOffsetMs: Long = 0,
+    val place: Place = Place.HOME,
+    val carBluetooth: Boolean = false,
+    val headphones: Boolean = false,
+    val raining: Boolean = false,
+)
+
+data class UiState(
+    val time: String = "",
+    val date: String = "",
+    val signals: Signals? = null,
+    val context: MomentContext? = null,
+    val items: List<NowItem> = emptyList(),
+    val hiddenApps: List<String> = emptyList(),
+    val focusUnlocked: Boolean = false,
+    val openAnywaySeconds: Int? = null,
+    val mood: Mood = Mood.ASLEEP,
+    val bubble: String? = null,
+    val bubbleIsIdea: Boolean = false,
+    val pattern: String? = null,
+    val proposal: Proposal? = null,
+    val editing: Boolean = false,
+    val thinking: Boolean = false,
+    val query: String = "",
+    val results: List<InstalledApp> = emptyList(),
+    val demo: DemoState = DemoState(),
+    val demoOpen: Boolean = false,
+    val apps: List<InstalledApp> = emptyList(),
+    val museStatus: String = "",
+)
+
+class MomentViewModel(app: Application) : AndroidViewModel(app) {
+    private val store = ContextStore(app)
+    val phone = Phone(app)
+
+    private val _ui = MutableStateFlow(UiState())
+    val ui: StateFlow<UiState> = _ui
+
+    private var lastContextId: String? = null
+    private var greetingJob: Job? = null
+    private var dismissStreak = 0
+
+    init {
+        refreshApps()
+        viewModelScope.launch {
+            while (true) { recompute(); delay(5_000) }
+        }
+        classifyAppsIfNeeded()
+        _ui.update { it.copy(museStatus = if (MuseClient.hasKey) "Muse Spark ready" else "No API key in this build") }
+    }
+
+    // ---- Signals -----------------------------------------------------------------------------
+
+    private fun now(): Calendar = Calendar.getInstance().apply {
+        timeInMillis = System.currentTimeMillis() + _ui.value.demo.clockOffsetMs
+    }
+
+    private fun signals(): Signals {
+        val c = now(); val d = _ui.value.demo
+        val dow = c.get(Calendar.DAY_OF_WEEK)
+        return Signals(
+            minuteOfDay = c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE),
+            weekday = dow != Calendar.SATURDAY && dow != Calendar.SUNDAY,
+            dayLabel = SimpleDateFormat("EEEE", Locale.ENGLISH).format(c.time),
+            place = d.place, carBluetooth = d.carBluetooth, headphones = d.headphones, raining = d.raining,
+        )
+    }
+
+    private fun timeText(s: Signals) = "%s %02d:%02d".format(s.dayLabel, s.minuteOfDay / 60, s.minuteOfDay % 60)
+
+    /** Re-runs the rules. Cheap and local: called on every tick and every signal change. */
+    fun recompute() {
+        val s = signals()
+        val c = now()
+        val apps = _ui.value.apps
+        val categories = store.appCategories()
+        val distracting = apps.map { it.label }.filter { label ->
+            categories[label] == "distracting" || ContextEngine.DISTRACTING_DEFAULTS.any { it.equals(label, true) }
+        }
+        val user = store.userContexts()
+        val ctx = ContextEngine.resolve(s, user, distracting)
+        val hidden = if (ctx.focus) (ctx.hide + distracting).distinct() else emptyList()
+        val items = ctx.items.sortedByDescending { store.tapCount(ctx.id, it.label) }
+        val pattern = ContextEngine.patternAt(s, store.visits(), user, store.dismissedPlaces())
+            .takeIf { dismissStreak < 2 }
+
+        val changed = ctx.id != lastContextId
+        if (changed) {
+            lastContextId = ctx.id
+            _ui.update { it.copy(focusUnlocked = false, openAnywaySeconds = null) }
+            if (ctx.greeting.isNotBlank()) say(ctx.greeting, 5_000)
+        }
+        _ui.update {
+            it.copy(
+                time = "%02d:%02d".format(c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE)),
+                date = SimpleDateFormat("EEEE d MMMM", Locale.ENGLISH).format(c.time),
+                signals = s, context = ctx, items = items, hiddenApps = hidden, pattern = pattern,
+            )
+        }
+        updateMood()
+        if (it_query().isNotBlank()) search(it_query())
+    }
+
+    private fun it_query() = _ui.value.query
+
+    private fun updateMood() = _ui.update { st ->
+        val ctxMood = st.context?.mood ?: Mood.ASLEEP
+        val mood = when {
+            st.thinking -> Mood.THINKING
+            st.proposal != null -> Mood.TALKING
+            st.pattern != null -> Mood.AWAKE
+            else -> ctxMood
+        }
+        val ideaBubble = st.pattern != null && st.proposal == null && !st.thinking && (st.bubble == null || st.bubbleIsIdea)
+        if (ideaBubble) {
+            val hour = (st.signals?.minuteOfDay ?: 0) / 60
+            st.copy(mood = mood, bubble = if (hour in 11..14) "I have an idea for lunch" else "I have an idea for this place", bubbleIsIdea = true)
+        } else if (st.pattern == null && st.bubbleIsIdea) st.copy(mood = mood, bubble = null, bubbleIsIdea = false)
+        else st.copy(mood = mood)
+    }
+
+    /** The companion speaks only on the home screen, briefly, then goes quiet. */
+    private fun say(text: String, ms: Long = 4_000) {
+        greetingJob?.cancel()
+        _ui.update { it.copy(bubble = text, bubbleIsIdea = false) }
+        greetingJob = viewModelScope.launch {
+            delay(ms)
+            _ui.update { if (it.bubble == text) it.copy(bubble = null) else it }
+            updateMood()
+        }
+    }
+
+    // ---- Companion ---------------------------------------------------------------------------
+
+    fun tapCompanion() {
+        val st = _ui.value
+        when {
+            st.thinking || st.proposal != null -> Unit
+            st.pattern != null -> draftFromPattern()
+            st.context?.id == "home" -> say("All calm. Type below to ask me anything.")
+            else -> say(st.context?.reason?.ifBlank { null } ?: whyText(st))
+        }
+    }
+
+    private fun whyText(st: UiState): String {
+        val c = st.context ?: return ""
+        val t = c.trigger
+        return when {
+            c.id == "driving" -> "Your car's Bluetooth is connected."
+            c.id == "study" -> "You're at the library. Focus is on."
+            c.id == "game" -> "Headphones on, evening. Game time."
+            c.id == "rain" -> "It's raining, so I kept things cozy."
+            t.place != null -> "You're at ${t.place}" + (t.startHour?.let { " around $it:00" } ?: "") + "."
+            else -> "This is your ${c.name} context."
+        }
+    }
+
+    private fun draftFromPattern() {
+        val st = _ui.value; val s = st.signals ?: return; val pattern = st.pattern ?: return
+        runMuse {
+            MuseJobs.draftFromPattern(s.place.label, s.place.address, pattern, timeText(s), st.apps.map { it.label })
+                .let { p -> p.copy(context = p.context.copy(trigger = p.context.trigger.copy(place = s.place.label))) }
+        }
+    }
+
+    fun ask(sentence: String) {
+        val st = _ui.value; val s = st.signals ?: return
+        if (sentence.isBlank()) return
+        _ui.update { it.copy(query = "", results = emptyList()) }
+        runMuse { MuseJobs.fromSentence(sentence, s.place.label, timeText(s), st.apps.map { it.label }) }
+    }
+
+    private fun runMuse(job: suspend () -> Proposal) {
+        _ui.update { it.copy(thinking = true, bubble = null, bubbleIsIdea = false) }
+        updateMood()
+        viewModelScope.launch {
+            val result = runCatching { job() }
+            _ui.update { it.copy(thinking = false, museStatus = "Muse Spark · ${MuseClient.lastLatencyMs} ms") }
+            result.onSuccess { p ->
+                if (p.source == "answer") { _ui.update { it.copy(proposal = null) }; say(p.question, 8_000) }
+                else _ui.update { it.copy(proposal = p, editing = false) }
+            }.onFailure { e ->
+                Log.e("Moment", "Muse failed", e)
+                // Rules-only fallback: never leave the user with nothing.
+                val s = _ui.value.signals
+                if (_ui.value.pattern != null && s != null) _ui.update { it.copy(proposal = fallbackProposal(s)) }
+                else say("I couldn't reach Muse just now. Try again?")
+                _ui.update { it.copy(museStatus = "Muse error: ${e.message?.take(60)}") }
+            }
+            updateMood()
+        }
+    }
+
+    private fun fallbackProposal(s: Signals) = Proposal(
+        context = MomentContext(
+            id = "ctx_" + System.currentTimeMillis(), name = s.place.label, chip = s.place.label,
+            trigger = Trigger(place = s.place.label, startHour = s.minuteOfDay / 60 - 1, endHour = s.minuteOfDay / 60 + 2, weekdaysOnly = s.weekday),
+            items = listOfNotNull(s.place.address?.let { NowItem("Directions to ${s.place.label}", "Walking route in Maps", "navigate", it) }, NowItem("Messages")),
+        ),
+        question = "You come here often around this time. Make it a context?",
+        explanation = "Shows directions and messages here.", source = "pattern",
+    )
+
+    fun acceptProposal() {
+        val p = _ui.value.proposal ?: return
+        store.saveContext(p.context)
+        dismissStreak = 0
+        _ui.update { it.copy(proposal = null, editing = false) }
+        lastContextId = null // force a greeting for the new context
+        recompute()
+        if (_ui.value.context?.id != p.context.id) say("Saved '${p.context.name}'. I'll show it when it fits.")
+    }
+
+    fun dismissProposal() {
+        val p = _ui.value.proposal ?: return
+        if (p.source == "pattern") p.context.trigger.place?.let { store.dismissPlace(it) }
+        dismissStreak++
+        _ui.update { it.copy(proposal = null, editing = false) }
+        recompute()
+        if (dismissStreak >= 2) say("Got it. I'll stay quiet for a while.")
+    }
+
+    fun toggleEdit() = _ui.update { it.copy(editing = !it.editing) }
+
+    fun editProposal(name: String? = null, removeItem: Int? = null) = _ui.update { st ->
+        val p = st.proposal ?: return@update st
+        var c = p.context
+        if (name != null) c = c.copy(name = name, chip = if (c.chip.contains("·")) name + " ·" + c.chip.substringAfter("·") else name)
+        if (removeItem != null) c = c.copy(items = c.items.filterIndexed { i, _ -> i != removeItem })
+        st.copy(proposal = p.copy(context = c))
+    }
+
+    // ---- Now row, search, focus ---------------------------------------------------------------
+
+    fun runItem(item: NowItem) {
+        _ui.value.context?.let { store.countTap(it.id, item.label) }
+        phone.run(item, _ui.value.apps)
+    }
+
+    fun setQuery(q: String) { _ui.update { it.copy(query = q) }; search(q) }
+
+    private fun search(q: String) {
+        val st = _ui.value
+        val hidden = if (st.focusUnlocked) emptySet() else st.hiddenApps.map { it.lowercase() }.toSet()
+        val res = if (q.isBlank()) emptyList() else st.apps
+            .filter { it.label.lowercase() !in hidden }
+            .filter { it.label.contains(q.trim(), ignoreCase = true) }
+            .sortedBy { !it.label.startsWith(q.trim(), ignoreCase = true) }
+            .take(6)
+        _ui.update { it.copy(results = res) }
+    }
+
+    fun launch(app: InstalledApp) { _ui.update { it.copy(query = "", results = emptyList()) }; phone.launch(app) }
+
+    /** Distractions stay one deliberate step away: a 10-second wait, then they're back. */
+    fun openAnyway() {
+        if (_ui.value.openAnywaySeconds != null) return
+        viewModelScope.launch {
+            for (sec in 10 downTo 1) { _ui.update { it.copy(openAnywaySeconds = sec) }; delay(1_000) }
+            _ui.update { it.copy(openAnywaySeconds = null, focusUnlocked = true) }
+            say("Okay, they're back in search until you leave.")
+        }
+    }
+
+    // ---- Apps -------------------------------------------------------------------------------
+
+    fun refreshApps() { _ui.update { it.copy(apps = phone.installedApps()) } }
+
+    fun classifyAppsIfNeeded(force: Boolean = false) {
+        if (!MuseClient.hasKey || (!force && store.appCategories().isNotEmpty())) return
+        viewModelScope.launch {
+            runCatching { MuseJobs.classifyApps(_ui.value.apps.map { it.label }) }
+                .onSuccess { store.saveAppCategories(it); recompute(); if (force) say("Sorted ${it.size} apps. ${it.count { e -> e.value == "distracting" }} are distracting.") }
+                .onFailure { Log.e("Moment", "classify failed", it) }
+        }
+    }
+
+    // ---- Demo panel -------------------------------------------------------------------------
+
+    fun openDemo(open: Boolean) = _ui.update { it.copy(demoOpen = open) }
+
+    fun setDemo(f: (DemoState) -> DemoState) {
+        val before = _ui.value.demo
+        val after = f(before)
+        _ui.update { it.copy(demo = after) }
+        if (after.place != before.place && after.place != Place.HOME) {
+            val s = signals()
+            store.logVisit(ContextStore.Visit(after.place.label, s.weekday, s.minuteOfDay / 60, System.currentTimeMillis()))
+        }
+        recompute()
+    }
+
+    /** Jumps the clock to a given day/time (demo only). */
+    fun setClock(year: Int, month: Int, day: Int, hour: Int, minute: Int) {
+        val target = Calendar.getInstance().apply { set(year, month, day, hour, minute, 0) }
+        setDemo { it.copy(clockOffsetMs = target.timeInMillis - System.currentTimeMillis()) }
+    }
+
+    fun liveClock() = setDemo { it.copy(clockOffsetMs = 0) }
+
+    fun seedVisits() {
+        repeat(3) { i ->
+            store.logVisit(ContextStore.Visit(Place.JOURDAN.label, true, 12, System.currentTimeMillis() - (i + 1) * 86_400_000L))
+        }
+        say("Seeded 3 weekday lunches at 17 bd Jourdan.")
+        recompute()
+    }
+
+    fun resetAll() {
+        store.reset(); dismissStreak = 0
+        _ui.update { it.copy(proposal = null, bubble = null, demo = DemoState()) }
+        classifyAppsIfNeeded()
+        recompute()
+    }
+}

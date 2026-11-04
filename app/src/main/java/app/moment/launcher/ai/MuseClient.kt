@@ -31,6 +31,8 @@ object MuseClient {
         withContext(Dispatchers.IO) {
             val body = JSONObject()
                 .put("model", TEXT_MODEL)
+                // "minimal" keeps answers around 3 s on the home screen; default effort took ~14 s.
+                .put("reasoning_effort", "minimal")
                 .put("messages", JSONArray()
                     .put(JSONObject().put("role", "system").put("content", system))
                     .put(JSONObject().put("role", "user").put("content", user)))
