@@ -49,6 +49,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -90,6 +92,7 @@ object Icons {
     const val GLOBE = "M12 22A10 10 0 1 1 12 2A10 10 0 1 1 12 22Z M2 12H22 M12 2C15 5 15 19 12 22C9 19 9 5 12 2Z"
     const val SPARKLE = "M12 3L13.8 10.2L21 12L13.8 13.8L12 21L10.2 13.8L3 12L10.2 10.2Z"
     const val CLOSE = "M6 6L18 18 M18 6L6 18"
+    const val MIC = "M12 2A3 3 0 0 1 15 5V12A3 3 0 0 1 9 12V5A3 3 0 0 1 12 2Z M19 10V12A7 7 0 0 1 5 12V10 M12 19V22 M8 22H16"
 }
 
 @Composable
@@ -184,7 +187,8 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
 
             // Companion row.
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.clickable(remember { MutableInteractionSource() }, null) { vm.tapCompanion() }) {
+                Box(Modifier.clickable(remember { MutableInteractionSource() }, null) { vm.tapCompanion() }, contentAlignment = Alignment.Center) {
+                    if (ui.listening) ListeningRings(ui.voiceLevel, p.text)
                     Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, outfit = ui.outfit)
                 }
                 Spacer(Modifier.width(4.dp))
@@ -416,6 +420,44 @@ private fun SearchBar(vm: MomentViewModel, ui: UiState, p: Palette, onFocus: (Bo
             )
         }
         if (ui.query.isNotEmpty()) LineIcon(Icons.CLOSE, p.text2, 18.dp, modifier = Modifier.clickable { vm.setQuery(""); focus.clearFocus() })
+        else MicButton(vm, ui, p)
+    }
+}
+
+/** Hold to talk to the companion (Muse Voice Transcribe). */
+@Composable
+private fun MicButton(vm: MomentViewModel, ui: UiState, p: Palette) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val ask = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
+    Box(
+        Modifier.size(36.dp).background(if (ui.listening) p.text else Color.Transparent, CircleShape)
+            .pointerInput(Unit) {
+                detectTapGestures(onPress = {
+                    val granted = androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.RECORD_AUDIO) ==
+                        android.content.pm.PackageManager.PERMISSION_GRANTED
+                    if (!granted) { ask.launch(android.Manifest.permission.RECORD_AUDIO); return@detectTapGestures }
+                    vm.startListening()
+                    tryAwaitRelease()
+                    vm.stopListening()
+                })
+            },
+        contentAlignment = Alignment.Center,
+    ) { LineIcon(Icons.MIC, if (ui.listening) p.pill else p.text, 20.dp, modifier = Modifier.alpha(if (ui.listening) 1f else .6f)) }
+}
+
+/** Sound-wave rings around the companion while it listens. */
+@Composable
+private fun ListeningRings(level: Float, color: Color) {
+    val t = rememberInfiniteTransition(label = "rings")
+    val ph by t.animateFloat(0f, 1f, infiniteRepeatable(tween(1400, easing = LinearEasing)), label = "ph")
+    Canvas(Modifier.size(96.dp)) {
+        val c = Offset(size.width / 2, size.height * 0.62f)
+        for (k in 0 until 3) {
+            val q = (ph + k / 3f) % 1f
+            val r = size.width * (0.42f + 0.25f * q + 0.15f * level)
+            drawCircle(color.copy(alpha = (1f - q) * (0.45f + 0.5f * level)), r, c, style = Stroke(2.dp.toPx()))
+        }
     }
 }
 

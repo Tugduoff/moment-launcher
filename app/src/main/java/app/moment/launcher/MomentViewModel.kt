@@ -62,6 +62,8 @@ data class UiState(
     val hop: Int = 0,
     val outfit: androidx.compose.ui.graphics.ImageBitmap? = null,
     val dressing: Boolean = false,
+    val listening: Boolean = false,
+    val voiceLevel: Float = 0f,
     val speak: Int = 0,
 )
 
@@ -147,6 +149,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     private fun updateMood() = _ui.update { st ->
         val ctxMood = st.context?.mood ?: Mood.ASLEEP
         val mood = when {
+            st.listening -> Mood.AWAKE
             st.thinking || st.dressing -> Mood.THINKING
             System.currentTimeMillis() < showOffUntil -> Mood.AWAKE
             st.proposal != null -> Mood.TALKING
@@ -263,6 +266,43 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         recompute()
         if (_ui.value.context?.id != p.context.id) say("Saved '${p.context.name}'. I'll show it when it fits.")
         if (p.context.outfit.isNotBlank()) dress(p.context)
+    }
+
+    // ---- Voice: push-to-talk with Muse Voice Transcribe ---------------------------------------
+
+    private var voice: app.moment.launcher.ai.Voice? = null
+
+    fun startListening() {
+        if (_ui.value.listening) return
+        val v = app.moment.launcher.ai.Voice().also { voice = it }
+        _ui.update { it.copy(listening = true, voiceLevel = 0f) }
+        updateMood()
+        say("I'm listening…", 60_000)
+        viewModelScope.launch {
+            runCatching { v.record { lvl -> _ui.update { it.copy(voiceLevel = it.voiceLevel * 0.6f + lvl * 0.4f) } } }
+                .onFailure { Log.e("Moment", "record failed", it) }
+        }
+    }
+
+    fun stopListening() {
+        val v = voice ?: return
+        voice = null
+        v.stop()
+        _ui.update { it.copy(listening = false, voiceLevel = 0f) }
+        updateMood()
+        viewModelScope.launch {
+            delay(150)
+            if (v.seconds() < 0.4f) { say("Hold the mic while you talk."); return@launch }
+            _ui.update { it.copy(thinking = true) }; updateMood()
+            val keywords = _ui.value.apps.map { it.label } + listOf("Izly", "Moment", "17 bd Jourdan", "beret", "ukulele")
+            runCatching { app.moment.launcher.ai.Voice.transcribe(v.wav(), keywords) }
+                .onSuccess { text ->
+                    _ui.update { it.copy(thinking = false) }
+                    if (text.isBlank()) say("I didn't catch that.") else { say("\u201C$text\u201D", 2_000); ask(text) }
+                }
+                .onFailure { e -> Log.e("Moment", "voice failed", e); _ui.update { it.copy(thinking = false) }; say("I couldn't hear that. Try again?") }
+            updateMood()
+        }
     }
 
     // ---- Wardrobe: Muse Image adds accessories on top of what the companion already wears ----
