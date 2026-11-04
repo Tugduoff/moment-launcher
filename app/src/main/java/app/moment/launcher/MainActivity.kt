@@ -67,6 +67,8 @@ class MainActivity : ComponentActivity() {
                 "wear" -> vm.wear(arg)
                 "undress" -> vm.undress()
                 "acceptplan" -> vm.acceptPlan()
+                "postcard" -> vm.sharePostcard()
+                "weather" -> vm.refreshWeather()
             }
         }
     }

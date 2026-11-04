@@ -24,6 +24,11 @@ import app.moment.launcher.data.Signals
 import app.moment.launcher.data.Trigger
 import app.moment.launcher.system.InstalledApp
 import app.moment.launcher.system.Phone
+import app.moment.launcher.system.RealSignals
+import app.moment.launcher.ai.Weather
+import app.moment.launcher.ai.WeatherNow
+import app.moment.launcher.ai.Postcard
+import app.moment.launcher.data.cleanAccessory
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -69,6 +74,8 @@ data class UiState(
     val dressing: Boolean = false,
     val listening: Boolean = false,
     val plan: AgentPlan? = null,
+    val weather: WeatherNow? = null,
+    val realCar: String? = null,
     val voiceLevel: Float = 0f,
     val speak: Int = 0,
     val showWardrobe: Boolean = false,
@@ -78,6 +85,7 @@ data class UiState(
 )
 
 private const val WARDROBE = "wardrobe"
+private const val CITY = "Paris, France"
 
 class MomentViewModel(app: Application) : AndroidViewModel(app) {
     private val store = ContextStore(app)
@@ -92,7 +100,12 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     private var showOffUntil = 0L
     private val outfitCache = mutableMapOf<String, androidx.compose.ui.graphics.ImageBitmap?>()
 
+    private val real = RealSignals(app)
+
     init {
+        real.start()
+        viewModelScope.launch { real.devices.collect { d -> _ui.update { it.copy(realCar = d.carName) }; recompute() } }
+        viewModelScope.launch { while (true) { refreshWeather(); delay(30 * 60_000L) } }
         refreshApps()
         viewModelScope.launch {
             while (true) { recompute(); delay(5_000) }
@@ -114,7 +127,11 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             minuteOfDay = c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE),
             weekday = dow != Calendar.SATURDAY && dow != Calendar.SUNDAY,
             dayLabel = SimpleDateFormat("EEEE", Locale.ENGLISH).format(c.time),
-            place = d.place, carBluetooth = d.carBluetooth, headphones = d.headphones, raining = d.raining,
+            place = d.place,
+            // Real signals OR the demo panel's fake ones.
+            carBluetooth = d.carBluetooth || real.devices.value.car,
+            headphones = d.headphones || real.devices.value.headphones,
+            raining = d.raining || (_ui.value.weather?.rainingNow == true),
         )
     }
 
@@ -146,7 +163,8 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         _ui.update {
             it.copy(
                 time = "%02d:%02d".format(c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE)),
-                date = SimpleDateFormat("EEEE d MMMM", Locale.ENGLISH).format(c.time),
+                date = SimpleDateFormat("EEEE d MMMM", Locale.ENGLISH).format(c.time) +
+                    (_ui.value.weather?.takeIf { _ui.value.demo.clockOffsetMs == 0L }?.let { " · ${it.summary}" } ?: ""),
                 signals = s, context = ctx, items = items, hiddenApps = hidden, pattern = pattern, outfit = outfit,
                 wardrobe = store.wardrobe(), contexts = user,
             )
@@ -241,6 +259,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
                 .put("place", s?.place?.label).put("car_bluetooth", s?.carBluetooth).put("headphones", s?.headphones)
                 .put("raining", s?.raining).put("active_context", st.context?.name)
                 .put("wearing", org.json.JSONArray(store.wardrobe()))
+                .put("weather", st.weather?.summary ?: "unknown").put("rain_soon", st.weather?.rainSoon)
         }
         override fun contexts() = org.json.JSONArray(store.userContexts().map {
             org.json.JSONObject().put("id", it.id).put("name", it.name).put("when", Agent.describe(it))
@@ -257,6 +276,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         }
         override fun wear(accessory: String): String { this@MomentViewModel.wear(accessory, "Trying on $accessory…"); return "putting it on now (takes ~15 s)" }
         override fun undress(): String { viewModelScope.launch { this@MomentViewModel.undress() }; return "done" }
+        override fun share(): String { sharePostcard(); return "painting a postcard and opening the share sheet" }
         override fun progress(text: String) { viewModelScope.launch { say("$text…", 30_000) } }
     }
 
@@ -351,6 +371,40 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         if (p.context.outfit.isNotBlank()) dress(p.context)
     }
 
+    // ---- Weather (Muse Spark + web_search grounding) and postcards -------------------------
+
+    private var rainWarned = false
+
+    fun refreshWeather() = viewModelScope.launch {
+        if (!MuseClient.hasKey) return@launch
+        runCatching { Weather.now(CITY) }
+            .onSuccess { w ->
+                _ui.update { it.copy(weather = w) }
+                recompute()
+                if (w.rainSoon && !w.rainingNow && !rainWarned) { rainWarned = true; say("Rain is coming in the next hours. Umbrella?", 6_000) }
+            }
+            .onFailure { Log.e("Moment", "weather failed", it) }
+    }
+
+    fun sharePostcard() = viewModelScope.launch {
+        val c = _ui.value.context
+        val scene = when {
+            c == null || c.id == "home" -> "a cozy corner of a Paris apartment"
+            else -> "${c.name.lowercase()} (${c.chip.lowercase()}), in Paris"
+        }
+        _ui.update { it.copy(dressing = true) }; updateMood()
+        say("Hold still… painting a postcard of us.", 30_000)
+        val appCtx = getApplication<Application>()
+        val outfit = (if (c != null && !c.builtIn) Outfits.load(appCtx, c.id) else null) ?: Outfits.load(appCtx, WARDROBE)
+        runCatching { Postcard.make(appCtx, outfit, scene, store.wardrobe()) }
+            .onSuccess { f ->
+                _ui.update { it.copy(dressing = false, hop = it.hop + 1) }; updateMood()
+                say("Here you go!", 3_000)
+                Postcard.share(appCtx, f, "My Moment companion today 🍑 Built with Meta Muse Spark + Muse Image. #MetaHackathon")
+            }
+            .onFailure { e -> Log.e("Moment", "postcard failed", e); _ui.update { it.copy(dressing = false) }; updateMood(); say("The paint didn't dry. Try again?") }
+    }
+
     // ---- Voice: push-to-talk with Muse Voice Transcribe ---------------------------------------
 
     private var voice: Voice? = null
@@ -409,7 +463,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun putOn(key: String, rawAccessory: String, intro: String, done: String) {
-        val accessory = app.moment.launcher.data.cleanAccessory(rawAccessory)
+        val accessory = cleanAccessory(rawAccessory)
         val app = getApplication<Application>()
         val base = Outfits.load(app, key) ?: Outfits.load(app, WARDROBE)
         _ui.update { it.copy(dressing = true) }
