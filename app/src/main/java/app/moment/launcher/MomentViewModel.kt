@@ -124,6 +124,10 @@ data class UiState(
     /** Widgets on the home screen (AppWidgetHost ids), and the picker. */
     val widgetIds: List<Int> = emptyList(),
     val widgetPicker: Boolean = false,
+    /** Favourite contacts (first names shown), and the picker with every contact. */
+    val favourites: List<String> = emptyList(),
+    val contactPicker: Boolean = false,
+    val allContacts: List<String> = emptyList(),
 )
 
 private const val CITY = "Paris, France"
@@ -221,7 +225,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         val hidden = if (ctx.focus) (ctx.hide + distracting).distinct() else emptyList()
         val manual = store.itemsFor(ctx.id)
         val event = if (on("calendar")) senses.nextEvent(System.currentTimeMillis()) else null
-        val friend = if (on("contacts")) senses.favourites().firstOrNull() else null
+        val friend = if (on("contacts")) favourites().firstOrNull() else null
         val base = (manual ?: ctx.items.sortedByDescending { store.tapCount(ctx.id, it.label) }).map { item ->
             if (item.kind == "call" && friend != null) item.copy(label = "Call ${friend.name.substringBefore(' ')}", detail = "", target = friend.number) else item
         }
@@ -371,7 +375,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
                 .put("raining", s?.raining).put("active_context", st.context?.name)
                 .put("steps_today", s?.steps).put("battery_percent", s?.battery).put("charging", s?.charging)
                 .put("next_event", st.nextEvent?.let { e -> e.title + " at " + SimpleDateFormat("HH:mm", Locale.ENGLISH).format(Date(e.start)) + (if (e.place.isNotBlank()) ", " + e.place else "") })
-                .put("favourite_contacts", org.json.JSONArray(if (on("contacts")) senses.favourites().map { f -> f.name.substringBefore(' ') } else emptyList<String>()))
+                .put("favourite_contacts", org.json.JSONArray(if (on("contacts")) favourites().map { f -> f.name.substringBefore(' ') } else emptyList<String>()))
                 .put("wearing", org.json.JSONArray(store.wardrobe()))
                 .put("weather", st.weather?.summary ?: "unknown").put("rain_soon", st.weather?.rainSoon)
         }
@@ -384,6 +388,12 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             return org.json.JSONArray(_ui.value.apps.map { org.json.JSONObject().put("name", it.label).put("category", cats[it.label] ?: "other") })
         }
         override fun memory() = listOfNotNull(uiPrefs.getString("about_me", "")?.takeIf { it.isNotBlank() }?.let { "In their own words: $it" }) + store.memory()
+        override fun callContact(name: String): String {
+            if (!on("contacts")) return "{\"error\":\"contacts are off; the user can turn them on in What I can see\"}"
+            val f = senses.find(name) ?: return "{\"error\":\"no contact matches '$name'\"}"
+            phone.run(NowItem("Call ${f.name}", "", "call", f.number), _ui.value.apps)
+            return "dialer opened for ${f.name.substringBefore(' ')}; the user taps call"
+        }
         override fun context(id: String) = store.userContexts().firstOrNull { it.id == id }
         override fun remember(fact: String, replaces: String) = store.remember(fact, replaces).also { refreshSenses() }
         override fun forget(fact: String) = if (store.forget(fact)) "forgotten".also { refreshSenses() } else "{\"error\":\"no such fact; use the exact wording from memory\"}"
@@ -887,11 +897,37 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- What I can see: about me, memory, calendar, contacts, approximate location ------------
 
+    private var favCache: Pair<Long, List<Senses.Friend>> = 0L to emptyList()
+
+    /** Cached: recompute runs every 5 s and must not query the contacts database each time. */
+    private fun favourites(): List<Senses.Friend> {
+        if (System.currentTimeMillis() - favCache.first > 10 * 60_000L)
+            favCache = System.currentTimeMillis() to senses.favourites(uiPrefs.getStringSet("fav_contacts", emptySet()).orEmpty())
+        return favCache.second
+    }
+
+    fun openContactPicker(open: Boolean) {
+        _ui.update { it.copy(contactPicker = open) }
+        if (open) viewModelScope.launch {
+            val names = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { senses.contacts().map { it.name } }
+            _ui.update { it.copy(allContacts = names) }
+        }
+    }
+
+    fun toggleFavourite(name: String) {
+        val cur = uiPrefs.getStringSet("fav_contacts", emptySet()).orEmpty()
+        val starred = senses.favourites().map { it.name }
+        if (name in starred && name !in cur) { say("Starred in Contacts: unstar it there.", 3_000); return }
+        uiPrefs.edit().putStringSet("fav_contacts", if (name in cur) cur - name else cur + name).apply()
+        favCache = 0L to emptyList(); refreshSenses(); recompute()
+    }
+
     private fun on(sense: String) = uiPrefs.getBoolean("sense_$sense", false) && senses.granted(SENSE_PERMISSION.getValue(sense))
 
     private fun refreshSenses() = _ui.update {
         it.copy(aboutMe = uiPrefs.getString("about_me", "").orEmpty(), memory = store.memory(),
-            sense = SENSE_PERMISSION.keys.associateWith { k -> on(k) }, homeSaved = uiPrefs.contains("home_lat"))
+            sense = SENSE_PERMISSION.keys.associateWith { k -> on(k) }, homeSaved = uiPrefs.contains("home_lat"),
+            favourites = if (on("contacts")) favourites().map { f -> f.name } else emptyList())
     }
 
     fun openSenses(open: Boolean) { refreshSenses(); _ui.update { it.copy(showSenses = open, showContexts = false, showWardrobe = false, demoOpen = false) } }
@@ -901,6 +937,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     /** Called with the permission result: the switch only stays on when Android said yes. */
     fun setSense(sense: String, wanted: Boolean) {
         uiPrefs.edit().putBoolean("sense_$sense", wanted).apply()
+        if (sense == "contacts") favCache = 0L to emptyList()
         if (wanted && sense == "location" && !uiPrefs.contains("home_lat")) saveHomeHere()
         refreshSenses(); recompute()
         if (sense == "location") refreshWeather()

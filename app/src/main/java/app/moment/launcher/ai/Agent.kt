@@ -19,6 +19,8 @@ interface AgentHost {
     fun contexts(): JSONArray
     /** A saved context, by id, with everything the agent may change. */
     fun context(id: String): MomentContext?
+    /** Opens the dialer for the best-matching contact (the user still taps call). */
+    fun callContact(name: String): String
     fun apps(): JSONArray
     fun memory(): List<String>
     /** Saves a fact; returns what happened (saved / already known / replaced an older one). */
@@ -103,6 +105,7 @@ object Agent {
         .put(fn("paint_background", "Paint a new home screen background for the current context with Muse Image (a calm wallpaper).", props("description" to s("What the wallpaper shows, 5-15 words, visual"))))
         .put(fn("remember", "Save a durable fact or preference about the user (e.g. 'plays guitar', 'gym on Tue and Thu'). If it updates something you already remember, pass the old fact in 'replaces'.",
             props("fact" to s("Short fact"), "replaces" to s("Exact old fact it supersedes, or empty"), required = listOf("fact"))))
+        .put(fn("call_contact", "Call someone from the user's contacts (opens the dialer ready to call).", props("name" to s("Contact name or first name"))))
         .put(fn("forget", "Forget a fact you remember (the user asked, or it is wrong or outdated).", props("fact" to s("Exact fact as remembered"))))
         .put(fn("add_reminder", "Open the calendar with a new event filled in (the user saves it). For 'remind me…', appointments, deadlines.", props(
             "title" to s("Short title"), "date" to s("YYYY-MM-DD"), "time" to s("HH:mm, 24h"))))
@@ -188,6 +191,7 @@ ${if (memory.isEmpty()) "" else "What you remember about the user: " + memory.jo
             "share_postcard" -> { step("Painting a postcard"); host.share() }
             "paint_background" -> { step("Painting a background"); host.paintBackground(a.optString("description")) }
             "remember" -> { step("Remembering: ${a.optString("fact")}"); host.remember(a.optString("fact"), a.optString("replaces")) }
+            "call_contact" -> { step("Calling ${a.optString("name")}"); host.callContact(a.optString("name")) }
             "forget" -> { step("Forgetting: ${a.optString("fact")}"); host.forget(a.optString("fact")) }
             "add_reminder" -> {
                 val at = runCatching { java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.ENGLISH).parse("${a.optString("date")} ${a.optString("time")}")!!.time }
