@@ -127,6 +127,9 @@ data class UiState(
     /** Widgets on the home screen (AppWidgetHost ids), and the picker. */
     val widgetIds: List<Int> = emptyList(),
     val widgetPicker: Boolean = false,
+    /** The widget being resized, and a counter bumped on every size change (to redraw). */
+    val editingWidget: Int? = null,
+    val widgetSizes: Int = 0,
     /** Favourite contacts (first names shown), and the picker with every contact. */
     val favourites: List<String> = emptyList(),
     val contactPicker: Boolean = false,
@@ -160,7 +163,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     /** Layers that failed recently: not retried for 10 minutes (recompute runs every 5 s). */
     private val drawFailedAt = mutableMapOf<String, Long>()
 
-    val widgets = Widgets(app)
+    val widgets = Widgets(app).also { w -> w.onLongPress = { id -> _ui.update { s -> s.copy(editingWidget = id) } } }
     private val real = RealSignals(app)
     val body = Body(app)
     val senses = Senses(app)
@@ -823,6 +826,12 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     fun widgetAdded(id: Int) { widgets.add(id); _ui.update { it.copy(widgetIds = widgets.ids(), widgetPicker = false) }; say("Added.", 2_000) }
     fun removeWidget(id: Int) { widgets.remove(id); _ui.update { it.copy(widgetIds = widgets.ids(), backdropMenu = false) } }
     fun refreshWidgets() = _ui.update { it.copy(widgetIds = widgets.ids()) }
+
+    /** Long-press on a widget: resize handles appear around it (tap outside or Done to finish). */
+    fun editWidget(id: Int?) = _ui.update { it.copy(editingWidget = id) }
+    fun resizeWidget(id: Int, heightDp: Int, quarters: Int, rowWidthDp: Int) {
+        widgets.setSize(id, heightDp, quarters, rowWidthDp); _ui.update { it.copy(widgetSizes = it.widgetSizes + 1) }
+    }
 
     /** Demo panel: show or hide the built-in sample contexts. */
     fun openStyle(open: Boolean) = _ui.update { it.copy(showStyle = open, backdropMenu = false) }

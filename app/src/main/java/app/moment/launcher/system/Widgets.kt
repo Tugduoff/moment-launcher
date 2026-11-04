@@ -12,7 +12,13 @@ import android.content.Context
  */
 class Widgets(private val ctx: Context) {
     val manager: AppWidgetManager = AppWidgetManager.getInstance(ctx)
-    private val host = AppWidgetHost(ctx, HOST_ID)
+    /** Called when a widget is long-pressed (the widget's own taps still work). */
+    var onLongPress: (Int) -> Unit = {}
+
+    private val host = object : AppWidgetHost(ctx, HOST_ID) {
+        override fun onCreateView(context: Context, appWidgetId: Int, appWidget: AppWidgetProviderInfo?): AppWidgetHostView =
+            LongPressHostView(context) { onLongPress(appWidgetId) }
+    }
     private val prefs = ctx.getSharedPreferences("moment_widgets", Context.MODE_PRIVATE)
     private val views = mutableMapOf<Int, AppWidgetHostView>()
 
@@ -46,9 +52,23 @@ class Widgets(private val ctx: Context) {
 
     fun label(id: Int): String = manager.getAppWidgetInfo(id)?.let { it.loadLabel(ctx.packageManager) } ?: "Widget"
 
-    /** Height the widget asks for, in dp (at least one row). */
-    fun heightDp(id: Int): Int = (manager.getAppWidgetInfo(id)?.minHeight ?: 0).let { px ->
-        (px / ctx.resources.displayMetrics.density).toInt().coerceIn(72, 320)
+    /** Height in dp: the user's size if resized, else what the widget asks for. */
+    fun heightDp(id: Int): Int = prefs.getInt("h_$id", -1).takeIf { it > 0 }
+        ?: (manager.getAppWidgetInfo(id)?.minHeight ?: 0).let { px -> (px / ctx.resources.displayMetrics.density).toInt().coerceIn(72, 320) }
+
+    /** Width as a share of the row: 2, 3 or 4 quarters. */
+    fun widthQuarters(id: Int): Int = prefs.getInt("w_$id", 4)
+
+    fun setSize(id: Int, heightDp: Int, quarters: Int, rowWidthDp: Int) {
+        prefs.edit().putInt("h_$id", heightDp).putInt("w_$id", quarters).apply()
+        tellSize(id, rowWidthDp * quarters / 4, heightDp)
+    }
+
+    /** Lets the widget re-layout for its new size (as launchers do after a resize). */
+    @Suppress("DEPRECATION")
+    fun tellSize(id: Int, wDp: Int, hDp: Int) {
+        val v = views[id] ?: return
+        runCatching { v.updateAppWidgetSize(null, wDp, hDp, wDp, hDp) }
     }
 
     /** One view per widget, reused across recompositions so it never flickers or reloads. */
@@ -61,5 +81,33 @@ class Widgets(private val ctx: Context) {
     companion object {
         const val HOST_ID = 4242
         const val MAX = 3
+    }
+}
+
+/**
+ * A widget view that notices a long press without stealing the widget's own taps and scrolls:
+ * it watches touches in onInterceptTouchEvent and only takes over once the finger has stayed put.
+ */
+class LongPressHostView(context: Context, private val onLong: () -> Unit) : AppWidgetHostView(context) {
+    private val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop
+    private var downX = 0f; private var downY = 0f; private var fired = false
+    private val check = Runnable { fired = true; performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS); onLong() }
+
+    override fun onInterceptTouchEvent(e: android.view.MotionEvent): Boolean {
+        when (e.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> {
+                downX = e.x; downY = e.y; fired = false
+                postDelayed(check, android.view.ViewConfiguration.getLongPressTimeout().toLong())
+            }
+            android.view.MotionEvent.ACTION_MOVE ->
+                if (kotlin.math.abs(e.x - downX) > slop || kotlin.math.abs(e.y - downY) > slop) removeCallbacks(check)
+            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> removeCallbacks(check)
+        }
+        return fired // once fired, swallow the rest of the gesture so the widget doesn't also get a click
+    }
+
+    override fun onTouchEvent(e: android.view.MotionEvent): Boolean {
+        if (e.actionMasked == android.view.MotionEvent.ACTION_UP || e.actionMasked == android.view.MotionEvent.ACTION_CANCEL) fired = false
+        return fired || super.onTouchEvent(e)
     }
 }
