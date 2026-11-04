@@ -42,6 +42,7 @@ class MainActivity : ComponentActivity() {
             app.moment.launcher.ui.EditRowSheet(vm, ui)
             app.moment.launcher.ui.BackdropSheet(vm, ui)
             app.moment.launcher.ui.SensesSheet(vm, ui)
+            app.moment.launcher.ui.FocusGuardSheet(vm, ui)
             app.moment.launcher.ui.Onboarding(vm, ui)
         }
     }

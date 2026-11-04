@@ -100,6 +100,9 @@ data class UiState(
     val chat: List<Pair<Boolean, String>> = emptyList(),
     val chatting: Boolean = false,
     val dizzy: Int = 0,
+    /** Focus guard: a hidden app someone tried to open, and the wait before it opens. */
+    val guard: InstalledApp? = null,
+    val guardSeconds: Int? = null,
     /** Rain, stars and glow can be switched off with the small button by the clock. */
     val effectsOff: Boolean = false,
     val aboutMe: String = "",
@@ -368,6 +371,10 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         override fun memory() = listOfNotNull(uiPrefs.getString("about_me", "")?.takeIf { it.isNotBlank() }?.let { "In their own words: $it" }) + store.memory()
         override fun remember(fact: String) = store.remember(fact)
         override fun openApp(name: String): String {
+            phone.findApp(name, _ui.value.apps)?.takeIf { hiddenNow(it.label) }?.let { app ->
+                viewModelScope.launch { _ui.update { it.copy(guard = app, guardSeconds = null) } }
+                return "hidden during focus: the user sees a 10-second wait before it opens"
+            }
             viewModelScope.launch { phone.openApp(name, _ui.value.apps) }
             return if (phone.findApp(name, _ui.value.apps) != null) "opened" else "not installed; opened the store"
         }
@@ -678,16 +685,40 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun search(q: String) {
         val st = _ui.value
-        val hidden = if (st.focusUnlocked) emptySet() else st.hiddenApps.map { it.lowercase() }.toSet()
+        // Hidden apps stay findable: opening one goes through the focus guard instead.
         val res = if (q.isBlank()) emptyList() else st.apps
-            .filter { it.label.lowercase() !in hidden }
             .filter { it.label.contains(q.trim(), ignoreCase = true) }
             .sortedBy { !it.label.startsWith(q.trim(), ignoreCase = true) }
             .take(6)
         _ui.update { it.copy(results = res) }
     }
 
-    fun launch(app: InstalledApp) { _ui.update { it.copy(query = "", results = emptyList()) }; phone.launch(app) }
+    private fun hiddenNow(label: String) = !_ui.value.focusUnlocked && _ui.value.hiddenApps.any { it.equals(label, true) }
+
+    fun launch(app: InstalledApp) {
+        _ui.update { it.copy(query = "", results = emptyList()) }
+        if (hiddenNow(app.label)) { _ui.update { it.copy(guard = app, guardSeconds = null) }; return }
+        phone.launch(app)
+    }
+
+    private var guardJob: kotlinx.coroutines.Job? = null
+
+    /** "Open in 10 s": a deliberate wait, then it opens (and distractions are back until you leave). */
+    fun guardOpen() {
+        val app = _ui.value.guard ?: return
+        guardJob?.cancel()
+        guardJob = viewModelScope.launch {
+            for (sec in 10 downTo 1) { _ui.update { it.copy(guardSeconds = sec) }; delay(1_000) }
+            _ui.update { it.copy(guard = null, guardSeconds = null, focusUnlocked = true) }
+            phone.launch(app)
+        }
+    }
+
+    fun guardCancel() {
+        guardJob?.cancel()
+        _ui.update { it.copy(guard = null, guardSeconds = null, hop = it.hop + 1) }
+        say("Proud of you.", 2_500)
+    }
 
     /** Distractions stay one deliberate step away: a 10-second wait, then they're back. */
     fun openAnyway() {

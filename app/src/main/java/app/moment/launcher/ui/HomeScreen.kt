@@ -252,9 +252,6 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                         ) {
                             LineIcon("M12 5V19 M5 12H19", p.text2, 20.dp); Spacer(Modifier.width(10.dp)); Text("Add an app", 20, p.text2)
                         }
-                        if (ui.hiddenApps.isNotEmpty() && !ui.focusUnlocked) {
-                                Spacer(Modifier.height(4.dp)); HiddenRow(ui, p) { vm.openAnyway() }
-                            }
                         }
                     }
                 }
@@ -549,8 +546,7 @@ private fun SearchResults(vm: MomentViewModel, ui: UiState, p: Palette) {
         ).filter { it.first.startsWith(q, ignoreCase = true) }.forEach { (label, detail, open) ->
             ActionCard(NowItem(label, detail, "moment"), p, onClick = open)
         }
-        val hidden = if (ui.focusUnlocked) emptySet() else ui.hiddenApps.map { it.lowercase() }.toSet()
-        val list = if (q.isEmpty()) ui.apps.filter { it.label.lowercase() !in hidden }.sortedBy { it.label.lowercase() } else ui.results
+        val list = if (q.isEmpty()) ui.apps.sortedBy { it.label.lowercase() } else ui.results
         list.forEach { app ->
             Row(Modifier.fillMaxWidth().height(48.dp).clickable { vm.launch(app) }, verticalAlignment = Alignment.CenterVertically) {
                 Text(app.label, 24, p.text, maxLines = 1)

@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import app.moment.launcher.MomentViewModel
 import app.moment.launcher.UiState
 import app.moment.launcher.data.Look
+import app.moment.launcher.data.Mood
 
 private val SHEET = Color(0xFFF7F4EE)
 
@@ -140,6 +141,29 @@ fun BackdropSheet(vm: MomentViewModel, ui: UiState) {
             Option(Icons.SPARKLE, "Paint again", p) { vm.repaint(null) }
             Option(PHOTO, "Use my photo", p) { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
             if (ui.backdrop != null) Option(Icons.CLOSE, "Remove", p) { vm.removeBackdrop() }
+        }
+    }
+}
+
+/** Opening an app hidden for focus: a gentle warning, and a 10-second wait if you still want it. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FocusGuardSheet(vm: MomentViewModel, ui: UiState) {
+    val app = ui.guard ?: return
+    val p = palette(Look.CREAM)
+    ModalBottomSheet(onDismissRequest = { vm.guardCancel() }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SHEET) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp).padding(bottom = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(app.label, 28, p.text, weight = 500)
+                    Text("Hidden while you focus.", 16, p.text2)
+                }
+                Companion(Mood.GLASSES, 64.dp)
+            }
+            Spacer(Modifier.height(12.dp))
+            Option(Icons.LOCK, "Stay focused", p) { vm.guardCancel() }
+            val sec = ui.guardSeconds
+            Option(Icons.CHEVRON, if (sec == null) "Open in 10 s" else "Opening in $sec s…", p, dim = sec != null) { if (sec == null) vm.guardOpen() }
         }
     }
 }
