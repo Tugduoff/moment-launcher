@@ -128,8 +128,8 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
     val ctx = ui.context ?: return
     val p = palette(ctx.look)
     val focus = LocalFocusManager.current
-    BackHandler(enabled = ui.query.isNotEmpty() || ui.proposal != null) {
-        if (ui.query.isNotEmpty()) { vm.setQuery(""); focus.clearFocus() } else vm.dismissProposal()
+    BackHandler(enabled = ui.query.isNotEmpty() || ui.proposal != null || ui.plan != null) {
+        if (ui.query.isNotEmpty()) { vm.setQuery(""); focus.clearFocus() } else if (ui.plan != null) vm.dismissPlan() else vm.dismissProposal()
     }
 
     Box(Modifier.fillMaxSize().background(p.bg)) {
@@ -161,6 +161,7 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
             AnimatedContent(
                 targetState = when {
                     ui.query.isNotBlank() -> "search"
+                    ui.plan != null -> "plan"
                     ui.proposal != null -> "proposal"
                     else -> "now:" + ctx.id
                 },
@@ -170,6 +171,7 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                 when {
                     key == "search" -> SearchResults(vm, ui, p)
                     key == "proposal" -> ProposalCard(vm, ui, p)
+                    key == "plan" -> PlanCard(vm, ui, p)
                     ctx.bigButtons -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         ui.items.forEach { BigTile(it, p) { vm.runItem(it) } }
                     }
@@ -353,6 +355,34 @@ private fun ProposalCard(vm: MomentViewModel, ui: UiState, p: Palette) {
             Button("Accept", Btn.Primary, p) { vm.acceptProposal() }
             Button(if (ui.editing) "Done" else "Edit", Btn.Secondary, p) { vm.toggleEdit() }
             Button("Dismiss", Btn.Ghost, p) { vm.dismissProposal() }
+        }
+    }
+}
+
+/** The agent's staged changes: one card, one decision. */
+@Composable
+private fun PlanCard(vm: MomentViewModel, ui: UiState, p: Palette) {
+    val plan = ui.plan ?: return
+    val shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomEnd = 24.dp, bottomStart = 6.dp)
+    Column(
+        Modifier.fillMaxWidth().shadow(24.dp, shape, ambientColor = Color(0x1433261A), spotColor = Color(0x1433261A))
+            .background(p.card, shape).border(1.dp, p.stroke, shape).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(plan.reply, 18, p.text, weight = 500, lineHeight = 25, maxLines = 4)
+        plan.steps.forEachIndexed { i, st ->
+            Row(verticalAlignment = Alignment.Top) {
+                Box(Modifier.size(22.dp).border(1.5.dp, p.stroke, CircleShape), contentAlignment = Alignment.Center) {
+                    Text("${i + 1}", 12, p.text, weight = 500)
+                }
+                Spacer(Modifier.width(10.dp))
+                Text(st.label, 14, p.text2, lineHeight = 19, maxLines = 3, modifier = Modifier.weight(1f))
+            }
+        }
+        if (plan.trace.isNotEmpty()) Text(plan.trace.distinct().joinToString("  ›  "), 11, p.text2.copy(alpha = .7f), maxLines = 2)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 2.dp)) {
+            Button(if (plan.steps.size > 1) "Accept all" else "Accept", Btn.Primary, p) { vm.acceptPlan() }
+            Button("Dismiss", Btn.Ghost, p) { vm.dismissPlan() }
         }
     }
 }

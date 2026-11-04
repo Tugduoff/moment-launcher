@@ -90,8 +90,9 @@ object ContextEngine {
         if (t.bluetooth == "headphones" && !s.headphones) return false
         if (t.place != null && !t.place.equals(s.place.label, true) && !t.place.equals(s.place.address, true)) return false
         if (t.weekdaysOnly && !s.weekday) return false
+        if (t.days.isNotEmpty() && t.days.none { it.equals(s.dayLabel, true) }) return false
         if (t.startHour != null && t.endHour != null && !inHours(hour, t.startHour, t.endHour)) return false
-        return t.place != null || t.bluetooth != null || t.startHour != null
+        return t.place != null || t.bluetooth != null || t.startHour != null || t.days.isNotEmpty()
     }
 
     fun inHours(h: Int, start: Int, end: Int) = if (start <= end) h in start until end else h >= start || h < end

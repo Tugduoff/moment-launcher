@@ -56,6 +56,7 @@ def panel(title, sub, path):
     ImageDraw.Draw(sh).rounded_rectangle((PH_X, PH_Y + 14, PH_X + PH_W, PH_Y + PH_H + 14), 52, fill=(51, 38, 26, 60))
     im.paste(sh.filter(ImageFilter.GaussianBlur(28)), (0, 0), sh.filter(ImageFilter.GaussianBlur(28)))
     d = ImageDraw.Draw(im)
+    d.rounded_rectangle((PH_X - 6, PH_Y - 6, PH_X + PH_W + 5, PH_Y + PH_H + 5), 54, fill=(42, 38, 34))  # bezel
     x, y, tw = 150, 380, PH_X - 150 - 120
     for line in wrap(d, title, font(66, 500), tw):
         d.text((x, y), line, font=font(66, 500), fill=INK); y += 80
@@ -108,7 +109,7 @@ def main(raw, markers, out):
             f"[1:v]setpts=(PTS-STARTPTS)/{speed:.3f},fps={FPS},scale={PH_W}:{PH_H},format=rgba[ph];"
             f"[2:v]format=gray,scale={PH_W}:{PH_H}[m];[ph][m]alphamerge[phm];"
             f"[0:v][phm]overlay={PH_X}:{PH_Y}:shortest=1,format=yuv420p[v]",
-            "-map", "[v]", "-r", str(FPS), "-c:v", "libx264", "-crf", "18", str(seg))
+            "-map", "[v]", "-t", f"{(end - t) / speed:.2f}", "-r", str(FPS), "-c:v", "libx264", "-crf", "18", str(seg))
         parts.append(seg)
         print(f"{name}: {end - t:.1f}s raw -> {(end - t) / speed:.1f}s (x{speed:.2f})")
     run("-loop", "1", "-t", "6", "-i", str(tmp / "outro.png"), "-r", str(FPS), "-pix_fmt", "yuv420p", "-c:v", "libx264", str(tmp / "p99.mp4"))

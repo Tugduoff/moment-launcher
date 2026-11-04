@@ -32,5 +32,5 @@ mark game; demo "place:HOME;clock:2026-10-30-21-40;hp:1"; sleep 6
 mark rain; demo "hp:0;clock:2026-11-01-16-20;rain:1"; sleep 6
 mark end; demo "rain:0;live"; sleep 3
 
-kill -INT $REC 2>/dev/null || true; sleep 2
+$A shell pkill -INT screenrecord || true; wait $REC 2>/dev/null || true; sleep 2
 $A pull /sdcard/moment_demo.mp4 demo_raw.mp4 && echo "Saved demo_raw.mp4"

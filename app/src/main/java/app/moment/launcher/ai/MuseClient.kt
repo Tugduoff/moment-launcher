@@ -48,6 +48,18 @@ object MuseClient {
             JSONObject(content.trim().removePrefix("```json").removePrefix("```").removeSuffix("```"))
         }
 
+    /** One chat turn with tools; returns the assistant message (content and/or tool_calls). */
+    suspend fun chat(messages: JSONArray, tools: JSONArray, effort: String = "low"): JSONObject = withContext(Dispatchers.IO) {
+        val body = JSONObject().put("model", TEXT_MODEL).put("reasoning_effort", effort)
+            .put("messages", messages).put("tools", tools).put("parallel_tool_calls", true)
+        val started = System.currentTimeMillis()
+        val res = post("/chat/completions", body)
+        lastLatencyMs = System.currentTimeMillis() - started
+        val msg = res.getJSONArray("choices").getJSONObject(0).getJSONObject("message")
+        Log.d(TAG, "[agent] ${lastLatencyMs}ms ${msg.toString().take(600)}")
+        msg
+    }
+
     /** Generates one image and returns its PNG/JPEG bytes. */
     suspend fun image(prompt: String): ByteArray = withContext(Dispatchers.IO) {
         val body = JSONObject()

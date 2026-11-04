@@ -62,6 +62,7 @@ class MainActivity : ComponentActivity() {
                 "openanyway" -> vm.openAnyway()
                 "wear" -> vm.wear(arg)
                 "undress" -> vm.undress()
+                "acceptplan" -> vm.acceptPlan()
             }
         }
     }

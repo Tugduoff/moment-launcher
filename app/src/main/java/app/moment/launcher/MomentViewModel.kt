@@ -8,6 +8,11 @@ import androidx.lifecycle.viewModelScope
 import app.moment.launcher.ai.MuseClient
 import app.moment.launcher.ai.MuseJobs
 import app.moment.launcher.ai.Outfits
+import app.moment.launcher.ai.Agent
+import app.moment.launcher.ai.AgentHost
+import app.moment.launcher.ai.AgentPlan
+import app.moment.launcher.ai.PlanStep
+import app.moment.launcher.ai.Voice
 import app.moment.launcher.data.ContextEngine
 import app.moment.launcher.data.ContextStore
 import app.moment.launcher.data.MomentContext
@@ -63,6 +68,7 @@ data class UiState(
     val outfit: androidx.compose.ui.graphics.ImageBitmap? = null,
     val dressing: Boolean = false,
     val listening: Boolean = false,
+    val plan: AgentPlan? = null,
     val voiceLevel: Float = 0f,
     val speak: Int = 0,
 )
@@ -152,7 +158,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             st.listening -> Mood.AWAKE
             st.thinking || st.dressing -> Mood.THINKING
             System.currentTimeMillis() < showOffUntil -> Mood.AWAKE
-            st.proposal != null -> Mood.TALKING
+            st.proposal != null || st.plan != null -> Mood.TALKING
             st.pattern != null -> Mood.AWAKE
             else -> ctxMood
         }
@@ -212,9 +218,76 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     fun ask(sentence: String) {
         val st = _ui.value; val s = st.signals ?: return
         if (sentence.isBlank()) return
-        _ui.update { it.copy(query = "", results = emptyList()) }
-        runMuse { MuseJobs.fromSentence(sentence, s.place.label, timeText(s), st.apps.map { it.label }) }
+        _ui.update { it.copy(query = "", results = emptyList(), proposal = null, plan = null) }
+        runAgent(sentence)
     }
+
+    // ---- Agent: Muse Spark with tool calling ------------------------------------------------
+
+    private val host = object : AgentHost {
+        override fun now(): org.json.JSONObject {
+            val st = _ui.value; val s = st.signals
+            return org.json.JSONObject().put("time", st.time).put("day", s?.dayLabel).put("weekday", s?.weekday)
+                .put("place", s?.place?.label).put("car_bluetooth", s?.carBluetooth).put("headphones", s?.headphones)
+                .put("raining", s?.raining).put("active_context", st.context?.name)
+                .put("wearing", org.json.JSONArray(store.wardrobe()))
+        }
+        override fun contexts() = org.json.JSONArray(store.userContexts().map {
+            org.json.JSONObject().put("id", it.id).put("name", it.name).put("when", Agent.describe(it))
+        })
+        override fun apps(): org.json.JSONArray {
+            val cats = store.appCategories()
+            return org.json.JSONArray(_ui.value.apps.map { org.json.JSONObject().put("name", it.label).put("category", cats[it.label] ?: "other") })
+        }
+        override fun memory() = store.memory()
+        override fun remember(fact: String) = store.remember(fact)
+        override fun openApp(name: String): String {
+            viewModelScope.launch { phone.openApp(name, _ui.value.apps) }
+            return if (phone.findApp(name, _ui.value.apps) != null) "opened" else "not installed; opened the store"
+        }
+        override fun wear(accessory: String): String { this@MomentViewModel.wear(accessory, "Trying on $accessory…"); return "putting it on now (takes ~15 s)" }
+        override fun undress(): String { viewModelScope.launch { this@MomentViewModel.undress() }; return "done" }
+        override fun progress(text: String) { viewModelScope.launch { say("$text…", 30_000) } }
+    }
+
+    private fun runAgent(request: String) {
+        _ui.update { it.copy(thinking = true, bubble = null, bubbleIsIdea = false) }
+        updateMood()
+        viewModelScope.launch {
+            val started = System.currentTimeMillis()
+            runCatching { Agent.run(request, host) }
+                .onSuccess { plan ->
+                    _ui.update { it.copy(thinking = false, museStatus = "Muse Spark agent · ${plan.trace.size} steps · ${System.currentTimeMillis() - started} ms") }
+                    if (plan.steps.isEmpty()) say(plan.reply, 7_000)
+                    else { _ui.update { it.copy(plan = plan, bubble = null) } }
+                }
+                .onFailure { e ->
+                    Log.e("Moment", "agent failed, falling back", e)
+                    _ui.update { it.copy(thinking = false) }
+                    val st = _ui.value; val s = st.signals ?: return@onFailure
+                    runMuse { MuseJobs.fromSentence(request, s.place.label, timeText(s), st.apps.map { it.label }) }
+                }
+            updateMood()
+        }
+    }
+
+    fun acceptPlan() {
+        val plan = _ui.value.plan ?: return
+        var dressFor: MomentContext? = null
+        plan.steps.forEach { st ->
+            when (st) {
+                is PlanStep.CreateContext -> { store.saveContext(st.context); if (st.context.outfit.isNotBlank() && dressFor == null) dressFor = st.context }
+                is PlanStep.DeleteContext -> store.deleteContext(st.id)
+            }
+        }
+        _ui.update { it.copy(plan = null) }
+        lastContextId = null
+        recompute()
+        say("Done! ${plan.steps.size} change${if (plan.steps.size > 1) "s" else ""} applied.")
+        dressFor?.let { dress(it) }
+    }
+
+    fun dismissPlan() { _ui.update { it.copy(plan = null) }; updateMood(); say("No problem.") }
 
     private fun runMuse(job: suspend () -> Proposal) {
         _ui.update { it.copy(thinking = true, bubble = null, bubbleIsIdea = false) }
@@ -270,11 +343,11 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- Voice: push-to-talk with Muse Voice Transcribe ---------------------------------------
 
-    private var voice: app.moment.launcher.ai.Voice? = null
+    private var voice: Voice? = null
 
     fun startListening() {
         if (_ui.value.listening) return
-        val v = app.moment.launcher.ai.Voice().also { voice = it }
+        val v = Voice().also { voice = it }
         _ui.update { it.copy(listening = true, voiceLevel = 0f) }
         updateMood()
         say("I'm listening…", 60_000)
@@ -295,7 +368,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             if (v.seconds() < 0.4f) { say("Hold the mic while you talk."); return@launch }
             _ui.update { it.copy(thinking = true) }; updateMood()
             val keywords = _ui.value.apps.map { it.label } + listOf("Izly", "Moment", "17 bd Jourdan", "beret", "ukulele")
-            runCatching { app.moment.launcher.ai.Voice.transcribe(v.wav(), keywords) }
+            runCatching { Voice.transcribe(v.wav(), keywords) }
                 .onSuccess { text ->
                     _ui.update { it.copy(thinking = false) }
                     if (text.isBlank()) say("I didn't catch that.") else { say("\u201C$text\u201D", 2_000); ask(text) }
@@ -454,6 +527,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun resetAll() {
+        _ui.update { it.copy(plan = null) }
         store.reset(); dismissStreak = 0; outfitCache.clear()
         getApplication<Application>().filesDir.listFiles { f -> f.name.startsWith("outfit_") }?.forEach { it.delete() }
         _ui.update { it.copy(proposal = null, bubble = null, demo = DemoState()) }

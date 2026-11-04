@@ -50,5 +50,12 @@ class ContextStore(ctx: Context) {
     fun addToWardrobe(item: String) = prefs.edit().putString("wardrobe", JSONArray(wardrobe() + item).toString()).apply()
     fun clearWardrobe() = prefs.edit().remove("wardrobe").apply()
 
+    fun deleteContext(id: String) =
+        prefs.edit().putString("contexts", JSONArray(userContexts().filter { it.id != id }.map { it.toJson() }).toString()).apply()
+
+    /** Facts the companion remembers about the user (agent "remember" tool). */
+    fun memory(): List<String> = JSONArray(prefs.getString("memory", "[]")).strings()
+    fun remember(fact: String) = prefs.edit().putString("memory", JSONArray((memory() + fact).takeLast(30)).toString()).apply()
+
     fun reset() = prefs.edit().clear().apply()
 }
