@@ -21,6 +21,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.TransformOrigin
@@ -137,6 +138,8 @@ private class Rig {
 fun Companion(
     mood: Mood, size: Dp = 96.dp, modifier: Modifier = Modifier, speakKey: Int = 0, hopKey: Int = 0,
     layers: List<androidx.compose.ui.graphics.ImageBitmap> = emptyList(), dizzyKey: Int = 0,
+    /** Something it reacts to on its own: "music" (notes), "rain" (umbrella), "charging" (spark). */
+    vibe: String? = null,
 ) {
     val rig = remember { Rig() }
     var frame by remember { mutableFloatStateOf(0f) }
@@ -219,6 +222,11 @@ fun Companion(
             Canvas(Modifier.fillMaxSize()) { drawFace(rig, mood, happy, br) }
         }
         Canvas(Modifier.fillMaxSize()) {
+            when (vibe) {
+                "music" -> drawNotes(t)
+                "rain" -> drawUmbrella(t)
+                "charging" -> drawSpark(t)
+            }
             if (rig.dizzy > 0f) drawStars(t, rig.dizzy)
             else when (mood) {
                 Mood.ASLEEP -> drawZs(t)
@@ -404,4 +412,52 @@ private fun DrawScope.drawDrop(t: Float) {
     }
     drawPath(path, Color(0xFF8EC5F2).copy(alpha = a))
     drawCircle(Color.White.copy(alpha = 0.7f * a), r * 0.3f, Offset(cx - r * 0.35f, cy - r * 0.2f))
+}
+
+/** Little notes drifting up from the left while music plays. */
+private fun DrawScope.drawNotes(t: Float) {
+    val u = size.width
+    for (k in 0 until 3) {
+        val p = ((t / 2.6f) + k / 3f) % 1f
+        val x = u * (0.08f + 0.06f * k) - u * 0.08f * p + sin(p * 9f + k) * u * 0.03f
+        val y = u * (0.55f - 0.5f * p)
+        val a = when { p < 0.15f -> p / 0.15f; p > 0.7f -> (1f - p) / 0.3f; else -> 1f } * 0.8f
+        val c = Color(0xFF6A4CFF).copy(alpha = a); val r = u * 0.03f
+        drawOval(c, Offset(x - r, y - r * 0.75f), Size(r * 2, r * 1.5f))
+        drawLine(c, Offset(x + r * 0.9f, y), Offset(x + r * 0.9f, y - u * 0.11f), u * 0.012f, StrokeCap.Round)
+        drawLine(c, Offset(x + r * 0.9f, y - u * 0.11f), Offset(x + r * 2.2f, y - u * 0.08f), u * 0.012f, StrokeCap.Round)
+    }
+}
+
+/** A small umbrella held over its head when it really rains, swaying a little. */
+private fun DrawScope.drawUmbrella(t: Float) {
+    val u = size.width
+    val sway = sin(t * 1.4f) * 4f
+    rotate(sway, Offset(u * 0.5f, u * 0.6f)) {
+        val cx = u * 0.5f; val top = u * -0.02f; val w = u * 0.86f
+        val canopy = Path().apply {
+            moveTo(cx - w / 2, top + u * 0.2f)
+            quadraticTo(cx, top - u * 0.08f, cx + w / 2, top + u * 0.2f)
+            // Scalloped edge.
+            for (i in 3 downTo 0) {
+                val x0 = cx - w / 2 + w * (i + 1) / 4f; val x1 = cx - w / 2 + w * i / 4f
+                quadraticTo((x0 + x1) / 2, top + u * 0.15f, x1, top + u * 0.2f)
+            }
+            close()
+        }
+        drawPath(canopy, Color(0xFF4A7BD9).copy(alpha = .92f))
+        drawLine(Color(0xFF3B2A20), Offset(cx, top + u * 0.02f), Offset(cx, top - u * 0.04f), u * 0.014f, StrokeCap.Round)
+    }
+}
+
+/** A tiny lightning spark blinking above it while the phone charges. */
+private fun DrawScope.drawSpark(t: Float) {
+    val u = size.width
+    val a = 0.5f + 0.5f * sin(t * 3f)
+    val x = u * 0.82f; val y = u * 0.12f; val s = u * 0.07f
+    val bolt = Path().apply {
+        moveTo(x, y - s); lineTo(x - s * 0.6f, y + s * 0.1f); lineTo(x - s * 0.05f, y + s * 0.1f)
+        lineTo(x - s * 0.35f, y + s); lineTo(x + s * 0.6f, y - s * 0.2f); lineTo(x + s * 0.05f, y - s * 0.2f); close()
+    }
+    drawPath(bolt, Color(0xFFFFC233).copy(alpha = a))
 }

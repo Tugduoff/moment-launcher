@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="lock_service_description">Lets Moment lock the screen when you double-tap the home screen. Moment reads nothing on your screen.</string>
+</resources>

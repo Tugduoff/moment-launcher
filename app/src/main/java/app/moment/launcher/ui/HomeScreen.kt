@@ -51,6 +51,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
@@ -162,7 +163,13 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
         ) { change, d -> dx += d; change.consume() }
     }.pointerInput(Unit) {
         // Long-press on empty space: change the background (paint again, your photo, remove).
-        detectTapGestures(onLongPress = { buzz(); vm.openBackdropMenu(true) })
+        detectTapGestures(onLongPress = { buzz(); vm.openBackdropMenu(true) }, onDoubleTap = { vm.lockScreen() })
+    }.pointerInput(Unit) {
+        // Swipe down: notifications. Swipe up: search (all apps when empty).
+        var dy = 0f
+        detectVerticalDragGestures(onDragStart = { dy = 0f }, onDragEnd = {
+            if (dy > swipeMin) vm.expandNotifications() else if (dy < -swipeMin) vm.focusSearch()
+        }) { change, d -> dy += d; change.consume() }
     }) {
         ui.backdrop?.let { bg ->
             androidx.compose.foundation.Image(bg, null, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
@@ -230,7 +237,7 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.combinedClickable(remember { MutableInteractionSource() }, null, onLongClick = { vm.openWardrobe(true) }) { vm.tapCompanion() }) {
-                        Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, layers = ui.layers, dizzyKey = ui.dizzy)
+                        Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, layers = ui.layers, dizzyKey = ui.dizzy, vibe = ui.vibe)
                     }
                 }
             } else {
@@ -276,7 +283,7 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.combinedClickable(remember { MutableInteractionSource() }, null, onLongClick = { vm.openWardrobe(true) }) { vm.tapCompanion() }, contentAlignment = Alignment.Center) {
                         if (ui.listening) ListeningRings(ui.voiceLevel, p.text)
-                        Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, layers = ui.layers, dizzyKey = ui.dizzy)
+                        Companion(ui.mood, 96.dp, speakKey = ui.speak, hopKey = ui.hop, layers = ui.layers, dizzyKey = ui.dizzy, vibe = ui.vibe)
                     }
                     Spacer(Modifier.width(4.dp))
                     AnimatedContent(
@@ -587,6 +594,9 @@ private fun SearchResults(vm: MomentViewModel, ui: UiState, p: Palette) {
 private fun SearchBar(vm: MomentViewModel, ui: UiState, p: Palette, onFocus: (Boolean) -> Unit) {
     val shape = RoundedCornerShape(26.dp)
     val focus = LocalFocusManager.current
+    val requester = remember { androidx.compose.ui.focus.FocusRequester() }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    androidx.compose.runtime.LaunchedEffect(ui.searchFocus) { if (ui.searchFocus > 0) runCatching { requester.requestFocus(); keyboard?.show() } }
     Row(
         Modifier.fillMaxWidth().height(52.dp).background(p.pill, shape).border(1.dp, p.stroke, shape).padding(horizontal = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -607,7 +617,7 @@ private fun SearchBar(vm: MomentViewModel, ui: UiState, p: Palette, onFocus: (Bo
                     if (quick != null) vm.launch(quick) else vm.ask(ui.query)
                     focus.clearFocus()
                 }),
-                modifier = Modifier.fillMaxWidth().onFocusChanged { onFocus(it.isFocused) },
+                modifier = Modifier.fillMaxWidth().focusRequester(requester).onFocusChanged { onFocus(it.isFocused) },
             )
         }
         if (ui.query.isNotEmpty()) LineIcon(Icons.CLOSE, p.text2, 18.dp, modifier = Modifier.clickable { vm.setQuery(""); focus.clearFocus() })
