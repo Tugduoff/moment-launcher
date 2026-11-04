@@ -51,6 +51,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
@@ -235,7 +236,7 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
             } else {
                 // Widgets sit under the clock; the free space stays above the rows.
                 Column(Modifier.weight(1f).fillMaxWidth().padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ui.widgetIds.forEach { id -> WidgetSlot(vm, id) }
+                    ui.widgetIds.forEach { id -> WidgetSlot(vm, ui, id, p) }
                 }
                 // The Now block swaps between: search results, a proposal card, or this moment's items.
                 AnimatedContent(
@@ -705,12 +706,60 @@ private fun NightStars() {
     }
 }
 
-/** Another app's widget, hosted by Moment. Remove it from "This screen" (long-press the background). */
+/**
+ * Another app's widget, hosted by Moment. Long-press it to resize, ColorOS-style: drag the
+ * bottom handle for height, the side handle for width (quarters of the row), then Done.
+ */
 @Composable
-private fun WidgetSlot(vm: MomentViewModel, id: Int) {
-    androidx.compose.ui.viewinterop.AndroidView(
-        factory = { c -> vm.widgets.view(c, id).also { v -> (v.parent as? android.view.ViewGroup)?.removeView(v) } },
-        modifier = Modifier.fillMaxWidth().height(vm.widgets.heightDp(id).dp)
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp)),
-    )
+private fun WidgetSlot(vm: MomentViewModel, ui: UiState, id: Int, p: Palette) {
+    val editing = ui.editingWidget == id
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val rowW = maxWidth
+        val savedH = remember(ui.widgetSizes, id) { vm.widgets.heightDp(id) }
+        val savedQ = remember(ui.widgetSizes, id) { vm.widgets.widthQuarters(id) }
+        var h by remember(savedH) { androidx.compose.runtime.mutableFloatStateOf(savedH.toFloat()) }
+        var wFrac by remember(savedQ) { androidx.compose.runtime.mutableFloatStateOf(savedQ / 4f) }
+        val density = androidx.compose.ui.platform.LocalDensity.current.density
+        fun commit() {
+            val q = (wFrac * 4f).let { kotlin.math.round(it).toInt() }.coerceIn(2, 4)
+            wFrac = q / 4f
+            vm.resizeWidget(id, h.toInt(), q, rowW.value.toInt())
+        }
+        if (editing) androidx.activity.compose.BackHandler { commit(); vm.editWidget(null) }
+        Column {
+            Box(Modifier.width(rowW * wFrac).height(h.dp)) {
+                androidx.compose.ui.viewinterop.AndroidView(
+                    factory = { c -> vm.widgets.view(c, id).also { v -> (v.parent as? android.view.ViewGroup)?.removeView(v) } },
+                    modifier = Modifier.fillMaxSize().clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp)),
+                )
+                if (editing) {
+                    val shape = androidx.compose.foundation.shape.RoundedCornerShape(22.dp)
+                    // A glass sheet over the widget while resizing, so drags never reach it.
+                    Box(Modifier.fillMaxSize().background(p.text.copy(alpha = .08f), shape).border(2.dp, p.text, shape)
+                        .pointerInput(Unit) { detectTapGestures { } })
+                    // Bottom handle: height, in 8 dp steps.
+                    Box(Modifier.align(Alignment.BottomCenter).size(56.dp, 28.dp).pointerInput(Unit) {
+                        detectVerticalDragGestures(onDragEnd = { commit() }) { ch, dy ->
+                            ch.consume(); h = (h + dy / density).coerceIn(56f, 520f)
+                        }
+                    }, contentAlignment = Alignment.Center) {
+                        Box(Modifier.size(40.dp, 6.dp).background(p.text, androidx.compose.foundation.shape.CircleShape))
+                    }
+                    // Side handle: width, snapping to quarters when released.
+                    Box(Modifier.align(Alignment.CenterEnd).size(28.dp, 56.dp).pointerInput(Unit) {
+                        detectHorizontalDragGestures(onDragEnd = { commit() }) { ch, dx ->
+                            ch.consume(); wFrac = (wFrac + dx / density / rowW.value).coerceIn(.5f, 1f)
+                        }
+                    }, contentAlignment = Alignment.Center) {
+                        Box(Modifier.size(6.dp, 40.dp).background(p.text, androidx.compose.foundation.shape.CircleShape))
+                    }
+                }
+            }
+            if (editing) Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Button("Done", Btn.Primary, p) { commit(); vm.editWidget(null) }
+                Button("Remove", Btn.Ghost, p) { vm.editWidget(null); vm.removeWidget(id) }
+                Text("${(wFrac * 4).let { kotlin.math.round(it).toInt() }}/4 · ${h.toInt()} dp", 13, p.text2)
+            }
+        }
+    }
 }
