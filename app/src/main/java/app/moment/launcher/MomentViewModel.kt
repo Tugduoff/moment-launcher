@@ -1360,11 +1360,26 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         recompute()
     }
 
+    /**
+     * "Reset everything" really means everything: contexts, memory, visits, wardrobe and layers,
+     * colours, fonts, effects, themes, widgets, backgrounds, senses, briefings, onboarding.
+     * Only the step counter's own bookkeeping survives (it is sensor calibration, not your data).
+     */
     fun resetAll() {
-        _ui.update { it.copy(plan = null) }
-        store.reset(); dismissStreak = 0; layerCache.clear()
-        getApplication<Application>().filesDir.listFiles { f -> f.name.startsWith("layer_") }?.forEach { it.delete() }
-        _ui.update { it.copy(proposal = null, bubble = null, demo = DemoState()) }
+        val ctx = getApplication<Application>()
+        widgets.ids().forEach { widgets.remove(it) }
+        store.reset()
+        uiPrefs.edit().clear().apply()
+        ctx.getSharedPreferences("moment_widgets", android.content.Context.MODE_PRIVATE).edit().clear().apply()
+        ctx.filesDir.listFiles()?.filter { it.isFile }?.forEach { it.delete() }
+        ctx.cacheDir.listFiles()?.forEach { it.deleteRecursively() }
+        layerCache.clear(); tintedCache.clear(); backdropCache.clear(); drawing.clear(); drawFailedAt.clear()
+        favCache = 0L to emptyList(); wasHolding = false
+        app.moment.launcher.system.NotifyHub.held.clear()
+        Style.current = Style(); Skin.current = Skin()
+        dismissStreak = 0; lastContextId = null; showOffUntil = 0L
+        val apps = _ui.value.apps
+        _ui.value = UiState(apps = apps, showOnboarding = true, museStatus = _ui.value.museStatus)
         classifyAppsIfNeeded()
         recompute()
     }
