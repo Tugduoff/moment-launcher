@@ -71,7 +71,7 @@ internal fun triggerSummary(c: MomentContext): String {
 fun ContextsSheet(vm: MomentViewModel, ui: UiState) {
     if (!ui.showContexts) return
     val p = palette(Look.CREAM)
-    val all = ui.contexts + listOf(
+    val all = listOfNotNull(ui.signals?.let { ContextEngine.home(it) }) + ui.contexts + listOf(
         ContextEngine.study(emptyList()), ContextEngine.driving, ContextEngine.game, ContextEngine.rain, ContextEngine.nightOut,
     ).filter { b -> ui.contexts.none { it.id == b.id } }
     ModalBottomSheet(
@@ -102,7 +102,11 @@ fun ContextsSheet(vm: MomentViewModel, ui: UiState) {
                 ) { LineIcon(Icons.CLOSE, p.text, 20.dp) }
             }
 
-            all.forEach { c -> ContextCard(vm, c, p) }
+            Text(
+                if (ui.pinnedId != null) "Picked by hand. Tap it again to go back to automatic." else "Tap one to use it now.",
+                14, p.text2,
+            )
+            all.forEach { c -> ContextCard(vm, c, p, active = ui.context?.id == c.id) }
 
             val dashed = RoundedCornerShape(22.dp)
             Row(
@@ -114,19 +118,20 @@ fun ContextsSheet(vm: MomentViewModel, ui: UiState) {
                 Text("New context: just type a sentence", 14, p.text2)
             }
             Text(
-                "Type \"contexts\" in search to open this list.", 13, p.text2, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                "Swipe sideways on the home screen to open this list.", 13, p.text2, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
             )
         }
     }
 }
 
 @Composable
-private fun ContextCard(vm: MomentViewModel, c: MomentContext, p: Palette) {
+private fun ContextCard(vm: MomentViewModel, c: MomentContext, p: Palette, active: Boolean) {
     val shape = RoundedCornerShape(24.dp)
     val outfit = c.outfit.ifBlank { BUILT_IN_OUTFIT[c.id].orEmpty() }
-    val chip = if (c.builtIn) "built in" else if (c.chip.contains("·")) c.chip.substringAfter("·").trim() else ""
+    val chip = if (active) "now" else if (c.builtIn) "built in" else if (c.chip.contains("·")) c.chip.substringAfter("·").trim() else ""
     Row(
-        Modifier.fillMaxWidth().background(p.card, shape).border(1.dp, p.stroke, shape).padding(12.dp),
+        Modifier.fillMaxWidth().background(p.card, shape).border(if (active) 2.dp else 1.dp, if (active) p.text else p.stroke, shape)
+            .clickable { vm.useContext(c.id) }.padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(

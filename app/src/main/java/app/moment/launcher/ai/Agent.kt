@@ -84,7 +84,7 @@ Changes to contexts are only STAGED: the user approves them on a card. Opening a
 For a multi-part request ("set up my week", "I go to the gym Tuesday and Thursday after class"), stage every context needed in one go.
 Only use installed app names for app rows; prefer actions (navigate, call, ride, share_location) when they save a step.
 Hide apps only for focus moments (study, work, gym, driving, sleep) or when asked.
-Finish with ONE short warm reply (max 2 sentences, no emoji, no markdown) summarizing what you did or staged.
+Finish with ONE short reply: at most 10 words, plain, no emoji, no markdown. Say what you staged or did, nothing else: never add "for you to approve", "ready", "let me know" or similar (the card already says it). Example: "Staged a Game time screen with your squad and top games."
 ${if (memory.isEmpty()) "" else "What you remember about the user: " + memory.joinToString("; ") + "."}"""
 
     suspend fun run(request: String, host: AgentHost): AgentPlan {
@@ -128,7 +128,7 @@ ${if (memory.isEmpty()) "" else "What you remember about the user: " + memory.jo
                     .put("greeting", a.optString("greeting")).put("outfit", a.optString("outfit"))
                 val c = MomentContext.fromJson(ctxJson, id = "ctx_" + System.nanoTime())
                 val label = describe(c)
-                steps += PlanStep.CreateContext(c, label); step("Drafting '${c.name}'")
+                steps += PlanStep.CreateContext(c, short(c)); step("Drafting '${c.name}'")
                 "staged as step ${steps.size}: $label"
             }
             "delete_context" -> {
@@ -147,6 +147,18 @@ ${if (memory.isEmpty()) "" else "What you remember about the user: " + memory.jo
             "remember" -> { step("Remembering: ${a.optString("fact")}"); host.remember(a.optString("fact")); "saved" }
             else -> "unknown tool"
         }
+    }
+
+    /** What the plan card shows for a staged context: its name and when, nothing more. */
+    fun short(c: MomentContext): String {
+        val t = c.trigger
+        val whenText = buildList {
+            if (t.days.isNotEmpty()) add(t.days.joinToString(", ") { it.take(3) }) else if (t.weekdaysOnly) add("weekdays")
+            if (t.startHour != null && t.endHour != null) add("${t.startHour}–${t.endHour}h")
+            t.bluetooth?.let { add("$it Bluetooth") }
+            t.place?.let { add(it) }
+        }.take(2).joinToString(" · ").ifBlank { "when you ask" }
+        return "${c.name} · $whenText"
     }
 
     fun describe(c: MomentContext): String {

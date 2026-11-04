@@ -53,6 +53,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -135,7 +136,15 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
         if (ui.query.isNotEmpty()) { vm.setQuery(""); focus.clearFocus() } else if (ui.plan != null) vm.dismissPlan() else vm.dismissProposal()
     }
 
-    Box(Modifier.fillMaxSize().background(p.bg)) {
+    val swipeMin = with(androidx.compose.ui.platform.LocalDensity.current) { 72.dp.toPx() }
+    Box(Modifier.fillMaxSize().background(p.bg).pointerInput(Unit) {
+        // Swipe sideways (either way) to see every context.
+        var dx = 0f
+        detectHorizontalDragGestures(
+            onDragStart = { dx = 0f },
+            onDragEnd = { if (kotlin.math.abs(dx) > swipeMin) vm.openContexts(true) },
+        ) { change, d -> dx += d; change.consume() }
+    }) {
         when (ctx.look) {
             Look.GAME -> GameGlow()
             Look.RAIN -> RainOverlay()
@@ -157,9 +166,6 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                 Text(ui.time, 88, p.text, weight = 300, letterSpacing = -2.64, lineHeight = 96)
                 Spacer(Modifier.height(2.dp))
                 Text(ui.date, 17, p.text2)
-            }
-            AnimatedVisibility(ctx.chip.isNotBlank(), enter = fadeIn() + slideInVertically { -it / 2 }, exit = fadeOut()) {
-                Column { Spacer(Modifier.height(12.dp)); Chip(ctx.chip, p) }
             }
             Spacer(Modifier.weight(1f))
 
@@ -385,7 +391,6 @@ private fun PlanCard(vm: MomentViewModel, ui: UiState, p: Palette) {
                 Text(st.label, 14, p.text2, lineHeight = 19, maxLines = 3, modifier = Modifier.weight(1f))
             }
         }
-        if (plan.trace.isNotEmpty()) Text(plan.trace.distinct().joinToString("  ›  "), 11, p.text2.copy(alpha = .7f), maxLines = 2)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 2.dp)) {
             Button(if (plan.steps.size > 1) "Accept all" else "Accept", Btn.Primary, p) { vm.acceptPlan() }
             Button("Dismiss", Btn.Ghost, p) { vm.dismissPlan() }
@@ -396,7 +401,7 @@ private fun PlanCard(vm: MomentViewModel, ui: UiState, p: Palette) {
 enum class Btn { Primary, Secondary, Ghost }
 
 @Composable
-private fun Button(label: String, style: Btn, p: Palette, onClick: () -> Unit) {
+internal fun Button(label: String, style: Btn, p: Palette, onClick: () -> Unit) {
     val shape = RoundedCornerShape(20.dp)
     val m = when (style) {
         Btn.Primary -> Modifier.background(p.accentFill, shape)
@@ -457,8 +462,10 @@ private fun SearchBar(vm: MomentViewModel, ui: UiState, p: Palette, onFocus: (Bo
                 cursorBrush = SolidColor(p.text),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = {
-                    val exact = ui.results.firstOrNull { it.label.equals(ui.query.trim(), true) }
-                    if (exact != null) vm.launch(exact) else vm.ask(ui.query)
+                    val q = ui.query.trim()
+                    val exact = ui.results.firstOrNull { it.label.equals(q, true) }
+                    val quick = exact ?: ui.results.firstOrNull()?.takeIf { q.split(' ').size <= 2 }
+                    if (quick != null) vm.launch(quick) else vm.ask(ui.query)
                     focus.clearFocus()
                 }),
                 modifier = Modifier.fillMaxWidth().onFocusChanged { onFocus(it.isFocused) },
@@ -520,22 +527,26 @@ private fun GameGlow() {
 
 @Composable
 private fun RainOverlay() {
-    val t = rememberInfiniteTransition(label = "rain")
-    val fall by t.animateFloat(0f, 1f, infiniteRepeatable(tween(1600, easing = LinearEasing), RepeatMode.Restart), label = "fall")
+    // Continuous time (not a looping 0..1 value): drops never jump back when an animation restarts.
+    val time by androidx.compose.runtime.produceState(0f) {
+        val start = androidx.compose.runtime.withFrameNanos { it }
+        while (true) androidx.compose.runtime.withFrameNanos { value = (it - start) / 1e9f }
+    }
     val drops = remember {
         val r = Random(7)
-        List(42) { Triple(r.nextFloat(), r.nextFloat(), 25f + r.nextFloat() * 36f) to (0.19f + r.nextFloat() * 0.29f) }
+        List(42) { Drop(r.nextFloat(), r.nextFloat(), 25f + r.nextFloat() * 36f, 0.19f + r.nextFloat() * 0.29f, 0.55f + r.nextFloat() * 0.35f) }
     }
     val beads = remember { val r = Random(11); List(9) { Triple(r.nextFloat(), r.nextFloat(), 5f + r.nextFloat() * 7f) } }
     Canvas(Modifier.fillMaxSize()) {
         run { val c = Offset(size.width * .46f, size.height * .28f); val r = size.width * .7f; drawCircle(Brush.radialGradient(listOf(Color(0x40FFFFFF), Color.Transparent), c, r), r, c) }
-        val a = Math.toRadians(12.0)
-        drops.forEach { (pos, alpha) ->
-            val (fx, fy, h) = pos
-            val y = ((fy + fall * 0.35f) % 1f) * size.height
-            val x = fx * size.width + (fall * 0.35f * size.height) * -sin(a).toFloat() * 0.3f
-            val len = h * density
-            drawLine(Color.White.copy(alpha = alpha), Offset(x, y), Offset(x - len * sin(a).toFloat(), y + len * cos(a).toFloat()), 1.5f * density, StrokeCap.Round)
+        val a = Math.toRadians(12.0); val sa = sin(a).toFloat(); val ca = cos(a).toFloat()
+        drops.forEach { d ->
+            val len = d.h * density
+            // Each drop falls a little past the bottom edge, then re-enters above the top, off screen.
+            val span = size.height + len * 2
+            val y = ((d.y + time * d.speed) % 1f) * span - len
+            val x = (((d.x * size.width - y * sa * 0.3f) % size.width) + size.width) % size.width
+            drawLine(Color.White.copy(alpha = d.alpha), Offset(x, y), Offset(x - len * sa, y + len * ca), 1.5f * density, StrokeCap.Round)
         }
         beads.forEach { (fx, fy, w) ->
             val c = Offset(fx * size.width, fy * size.height); val rr = w * density / 2
@@ -544,6 +555,8 @@ private fun RainOverlay() {
         }
     }
 }
+
+private class Drop(val x: Float, val y: Float, val h: Float, val alpha: Float, val speed: Float)
 
 @Composable
 private fun NightStars() {

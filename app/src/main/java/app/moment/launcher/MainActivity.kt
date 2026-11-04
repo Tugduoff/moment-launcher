@@ -34,6 +34,7 @@ class MainActivity : ComponentActivity() {
             WardrobeSheet(vm, ui)
             ContextsSheet(vm, ui)
             app.moment.launcher.ui.TimetableSheet(vm, ui)
+            app.moment.launcher.ui.Onboarding(vm, ui)
         }
     }
 

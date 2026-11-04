@@ -45,6 +45,8 @@ data class DemoState(
     val carBluetooth: Boolean = false,
     val headphones: Boolean = false,
     val raining: Boolean = false,
+    /** True once the demo panel or hook changed anything: real weather then stays out of the way. */
+    val touched: Boolean = false,
 )
 
 data class UiState(
@@ -80,6 +82,10 @@ data class UiState(
     val speak: Int = 0,
     val showWardrobe: Boolean = false,
     val showContexts: Boolean = false,
+    val showOnboarding: Boolean = false,
+    /** A context the user picked by hand in the Contexts list; it wins until [pinnedUntil]. */
+    val pinnedId: String? = null,
+    val pinnedUntil: Long = 0,
     val wardrobe: List<String> = emptyList(),
     val contexts: List<MomentContext> = emptyList(),
 )
@@ -132,7 +138,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             carBluetooth = d.carBluetooth || real.devices.value.car,
             headphones = d.headphones || real.devices.value.headphones,
             // Real weather only counts on the live clock: a faked demo time keeps its own sky.
-            raining = d.raining || (_ui.value.weather?.rainingNow == true && d.clockOffsetMs == 0L),
+            raining = d.raining || (_ui.value.weather?.rainingNow == true && d.clockOffsetMs == 0L && !d.touched),
         )
     }
 
@@ -148,7 +154,10 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             categories[label] == "distracting" || ContextEngine.DISTRACTING_DEFAULTS.any { it.equals(label, true) }
         }
         val user = store.userContexts()
-        val ctx = ContextEngine.resolve(s, user, distracting)
+        val st0 = _ui.value
+        val pinned = st0.pinnedId?.takeIf { System.currentTimeMillis() < st0.pinnedUntil }?.let { id -> pickable(s, user, distracting).firstOrNull { it.id == id } }
+        if (pinned == null && st0.pinnedId != null) _ui.update { it.copy(pinnedId = null) }
+        val ctx = pinned ?: ContextEngine.resolve(s, user, distracting)
         val hidden = if (ctx.focus) (ctx.hide + distracting).distinct() else emptyList()
         val items = ctx.items.sortedByDescending { store.tapCount(ctx.id, it.label) }
         val pattern = ContextEngine.patternAt(s, store.visits(), user, store.dismissedPlaces())
@@ -247,6 +256,11 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             _ui.update { it.copy(query = "", results = emptyList(), showContexts = "contexts" in key, showWardrobe = "wardrobe" in key) }
             return
         }
+        // "open spotify" (or just an app's name) opens it right away: no model round trip.
+        val verb = Regex("^(open|launch|start|ouvre|ouvrir|lance|lancer)\\s+(.+)$").find(key)?.groupValues?.get(2)
+        val app = if (verb != null) phone.findApp(verb, st.apps)?.takeIf { verb.split(' ').size <= 3 }
+            else st.apps.firstOrNull { it.label.equals(key, true) }
+        if (app != null) { launch(app); return }
         _ui.update { it.copy(query = "", results = emptyList(), proposal = null, plan = null) }
         runAgent(sentence)
     }
@@ -617,7 +631,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setDemo(f: (DemoState) -> DemoState) {
         val before = _ui.value.demo
-        val after = f(before)
+        val after = f(before).copy(touched = true)
         _ui.update { it.copy(demo = after) }
         if (after.place != before.place && after.place != Place.HOME) {
             val s = signals()
@@ -632,7 +646,34 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         setDemo { it.copy(clockOffsetMs = target.timeInMillis - System.currentTimeMillis()) }
     }
 
-    fun liveClock() = setDemo { it.copy(clockOffsetMs = 0) }
+    // ---- First run --------------------------------------------------------------------------
+
+    private val uiPrefs = app.getSharedPreferences("moment_ui", android.content.Context.MODE_PRIVATE)
+    init { if (!uiPrefs.getBoolean("onboarded", false)) _ui.update { it.copy(showOnboarding = true) } }
+
+    fun finishOnboarding() {
+        uiPrefs.edit().putBoolean("onboarded", true).apply()
+        _ui.update { it.copy(showOnboarding = false) }
+        say("Hi! I'll sleep until I notice something. Ask me anything below.", 6_000)
+    }
+
+    fun liveClock() { _ui.update { it.copy(demo = DemoState()) }; recompute() }
+
+    /** Every context the user can switch to by hand: home, their own, and the built-in ones. */
+    private fun pickable(s: Signals, user: List<MomentContext>, distracting: List<String>) =
+        listOf(ContextEngine.home(s)) + user + listOf(
+            ContextEngine.study(distracting), ContextEngine.driving, ContextEngine.game, ContextEngine.rain, ContextEngine.nightOut,
+        ).filter { b -> user.none { it.id == b.id } }
+
+    /** Tapping a context in the list switches to it for an hour; tapping the active one goes back to automatic. */
+    fun useContext(id: String) {
+        val st = _ui.value
+        val back = st.pinnedId == id
+        _ui.update { it.copy(pinnedId = if (back) null else id, pinnedUntil = System.currentTimeMillis() + 60 * 60_000L, showContexts = false) }
+        recompute()
+        val name = _ui.value.context?.name ?: return
+        say(if (back) "Back to automatic." else "$name for the next hour. Tap it again in the list to go back to automatic.", 5_000)
+    }
 
     fun seedVisits() {
         repeat(3) { i ->
