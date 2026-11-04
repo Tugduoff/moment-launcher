@@ -42,6 +42,23 @@ class Senses(private val ctx: Context) {
         }.getOrNull()
     }
 
+    /** Timed events between two instants, in order (for the morning and evening briefings). */
+    fun events(from: Long, to: Long): List<Event> {
+        if (!granted(Manifest.permission.READ_CALENDAR)) return emptyList()
+        val uri = CalendarContract.Instances.CONTENT_URI.buildUpon().also {
+            android.content.ContentUris.appendId(it, from); android.content.ContentUris.appendId(it, to)
+        }.build()
+        val cols = arrayOf(CalendarContract.Instances.EVENT_ID, CalendarContract.Instances.TITLE, CalendarContract.Instances.BEGIN,
+            CalendarContract.Instances.END, CalendarContract.Instances.EVENT_LOCATION, CalendarContract.Instances.ALL_DAY)
+        return runCatching {
+            ctx.contentResolver.query(uri, cols, null, null, "${CalendarContract.Instances.BEGIN} ASC")?.use { c ->
+                generateSequence { if (c.moveToNext()) c else null }.mapNotNull {
+                    if (it.getInt(5) != 0) null else Event(it.getLong(0), it.getString(1).orEmpty(), it.getLong(2), it.getLong(3), it.getString(4).orEmpty())
+                }.filter { it.title.isNotBlank() && it.start >= from }.toList()
+            }.orEmpty()
+        }.getOrDefault(emptyList())
+    }
+
     /** Favourites: contacts starred in the phone's Contacts app, plus the ones picked in Moment ([picked], by name). */
     fun favourites(picked: Set<String> = emptySet()): List<Friend> {
         val starred = query("${ContactsContract.CommonDataKinds.Phone.STARRED}=1")

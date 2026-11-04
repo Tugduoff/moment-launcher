@@ -128,6 +128,7 @@ class MainActivity : ComponentActivity() {
                 "contexts" -> vm.openContexts(arg == "1")
                 "effect" -> arg.toIntOrNull()?.let { vm.setStyle(app.moment.launcher.ui.Style.current.copy(effect = it)) }
                 "style" -> vm.openStyle(arg != "0")
+                "brief" -> vm.briefNow(arg == "pm")
             }
         }
     }

@@ -59,6 +59,11 @@ class Widgets(private val ctx: Context) {
     /** Width as a share of the row: 2, 3 or 4 quarters. */
     fun widthQuarters(id: Int): Int = prefs.getInt("w_$id", 4)
 
+    /** The context a widget belongs to ("" = every context). */
+    fun contextOf(id: Int): String = prefs.getString("ctx_$id", "").orEmpty()
+    fun setContext(id: Int, contextId: String) = prefs.edit().putString("ctx_$id", contextId).apply()
+    fun showsIn(id: Int, contextId: String?) = contextOf(id).let { it.isEmpty() || it == contextId }
+
     fun setSize(id: Int, heightDp: Int, quarters: Int, rowWidthDp: Int) {
         prefs.edit().putInt("h_$id", heightDp).putInt("w_$id", quarters).apply()
         tellSize(id, rowWidthDp * quarters / 4, heightDp)

@@ -243,13 +243,14 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
             } else {
                 // Widgets sit under the clock; the free space stays above the rows.
                 Column(Modifier.weight(1f).fillMaxWidth().padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ui.widgetIds.forEach { id -> WidgetSlot(vm, ui, id, p) }
+                    ui.widgetIds.filter { id -> ui.widgetSizes >= 0 && vm.widgets.showsIn(id, ctx.id) }.forEach { id -> WidgetSlot(vm, ui, id, p) }
                 }
                 // The Now block swaps between: search results, a proposal card, or this moment's items.
                 AnimatedContent(
                     targetState = when {
                         ui.query.isNotBlank() -> "search"
                         ui.plan != null -> "plan"
+                        ui.brief != null -> "brief"
                         ui.proposal != null -> "proposal"
                         else -> "now:" + ctx.id
                     },
@@ -260,6 +261,7 @@ fun HomeScreen(vm: MomentViewModel, ui: UiState) {
                         key == "search" -> SearchResults(vm, ui, p)
                         key == "proposal" -> ProposalCard(vm, ui, p)
                         key == "plan" -> PlanCard(vm, ui, p)
+                        key == "brief" -> BriefCard(vm, ui, p)
                         ctx.bigButtons -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             ui.items.forEach { BigTile(it, p, onLong = { buzz(); vm.editRow(it) }) { vm.runItem(it) } }
                         }
@@ -769,8 +771,34 @@ private fun WidgetSlot(vm: MomentViewModel, ui: UiState, id: Int, p: Palette) {
             if (editing) Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Button("Done", Btn.Primary, p) { commit(); vm.editWidget(null) }
                 Button("Remove", Btn.Ghost, p) { vm.editWidget(null); vm.removeWidget(id) }
-                Text("${(wFrac * 4).let { kotlin.math.round(it).toInt() }}/4 · ${h.toInt()} dp", 13, p.text2)
+                val pinned = remember(ui.widgetSizes, id) { vm.widgets.contextOf(id).isNotEmpty() }
+                Text(if (pinned) "Only here · show everywhere" else "Everywhere · only here", 13, p.text, underline = true,
+                    modifier = Modifier.clickable { vm.toggleWidgetContext(id) })
+
             }
         }
+    }
+}
+
+/** The morning / evening briefing: a title, the companion's line, a few facts, one button. */
+@Composable
+private fun BriefCard(vm: MomentViewModel, ui: UiState, p: Palette) {
+    val b = ui.brief ?: return
+    val shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomEnd = 24.dp, bottomStart = 6.dp)
+    Column(
+        Modifier.fillMaxWidth().background(p.card, shape).border(1.dp, p.stroke, shape).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(b.title, 24, p.text, weight = 500)
+        Text(b.line, 15, p.text2)
+        Spacer(Modifier.height(2.dp))
+        b.facts.forEach { f ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(6.dp).background(Color(HINT_DOT), CircleShape)); Spacer(Modifier.width(10.dp))
+                Text(f, 16, p.text, maxLines = 2)
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Button(if (b.evening) "Good night" else "Let's go", Btn.Primary, p) { vm.dismissBrief() }
     }
 }
