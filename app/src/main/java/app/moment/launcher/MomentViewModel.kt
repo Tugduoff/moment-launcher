@@ -400,7 +400,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
             .onSuccess { f ->
                 _ui.update { it.copy(dressing = false, hop = it.hop + 1) }; updateMood()
                 say("Here you go!", 3_000)
-                Postcard.share(appCtx, f, "My Moment companion today 🍑 Built with Meta Muse Spark + Muse Image. #MetaHackathon")
+                Postcard.share(appCtx, f, "My Moment companion today 🍊 Built with Meta Muse Spark + Muse Image. #MetaHackathon")
             }
             .onFailure { e -> Log.e("Moment", "postcard failed", e); _ui.update { it.copy(dressing = false) }; updateMood(); say("The paint didn't dry. Try again?") }
     }
