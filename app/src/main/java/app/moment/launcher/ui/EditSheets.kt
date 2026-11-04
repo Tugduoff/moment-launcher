@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -260,12 +261,13 @@ fun StyleSheet(vm: MomentViewModel, ui: UiState) {
     val p = palette(Look.CREAM)
     val st = Style.current
     ModalBottomSheet(onDismissRequest = { vm.openStyle(false) }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = SHEET) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 28.dp).padding(bottom = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 28.dp).padding(bottom = 20.dp).navigationBarsPadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Style", 28, p.text, weight = 500)
             Text(ui.time.ifBlank { "12:34" }, Style.SIZES[st.clockSize].second / 2 + 20, p.text, weight = Style.WEIGHTS[st.clockWeight].second, font = Style.clockFamily(st))
             ThemesSection(vm, ui, p)
             Text("Effect", 13, p.text2)
             EffectCarousel(st.effect) { vm.setStyle(st.copy(effect = it)) }
+            Text("Auto follows the context (rain, stars, glow). The sparkle by the clock pauses any effect.", 12, p.text2)
             Text("Clock font", 13, p.text2)
             ChoiceRow(Style.CLOCK_FONTS, st.clockFont, p, fontOf = { if (it == 0) Style.family(st.font) else Style.family(it - 1) }) { vm.setStyle(st.copy(clockFont = it)) }
             Text("App font", 13, p.text2)
@@ -274,7 +276,6 @@ fun StyleSheet(vm: MomentViewModel, ui: UiState) {
             ChoiceRow(Style.WEIGHTS.map { it.first }, st.clockWeight, p) { vm.setStyle(st.copy(clockWeight = it)) }
             Text("Clock size", 13, p.text2)
             ChoiceRow(Style.SIZES.map { it.first }, st.clockSize, p) { vm.setStyle(st.copy(clockSize = it)) }
-            Text("Auto follows the context (rain, stars, glow). The sparkle by the clock pauses any effect.", 12, p.text2)
             Text("Time format", 13, p.text2)
             ChoiceRow(listOf("24 h", "12 h"), if (st.h12) 1 else 0, p) { vm.setStyle(st.copy(h12 = it == 1)) }
         }

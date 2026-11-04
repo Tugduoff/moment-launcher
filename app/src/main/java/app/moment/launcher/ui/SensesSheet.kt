@@ -51,7 +51,7 @@ import app.moment.launcher.UiState
 import app.moment.launcher.data.Look
 
 private val SENSES = listOf(
-    Triple("calendar", "Calendar", "Your next event as a row, and a nudge 10 min before"),
+    Triple("calendar", "Calendar", "Your next event under the date, and a nudge 10 min before"),
     Triple("contacts", "Favourite contacts", "\"Call a friend\" calls them, and you can ask me to call anyone"),
     Triple("location", "Approximate location", "Home or away, and the weather where you are"),
 )

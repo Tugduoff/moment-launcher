@@ -915,7 +915,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         val dayStart = day.timeInMillis; val dayMs = 86_400_000L
         val calOn = on("calendar")
         val facts = mutableListOf<String>()
-        _ui.value.weather?.let { w -> facts += "${w.summary}, ${w.tempC}°" + if (w.rainSoon && !w.rainingNow) " · rain later" else "" }
+        _ui.value.weather?.let { w -> facts += (if (w.summary.contains("°")) w.summary else "${w.summary}, ${w.tempC}°") + if (w.rainSoon && !w.rainingNow) " · rain later" else "" }
         if (!evening) {
             val events = if (calOn) senses.events(c.timeInMillis, dayStart + dayMs) else emptyList()
             if (events.isEmpty()) facts += if (calOn) "Nothing in your calendar today" else "Calendar is off (What I can see)"
