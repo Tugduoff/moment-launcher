@@ -14,8 +14,8 @@ It places each file at its scene's start and lowers the music under your voice. 
 | 02 | 0:10 | 10 s | 23 | Meet Moment | So I built Moment: a clock, a few rows, and a little companion that sleeps until it's needed. |
 | 03 | 0:20 | 15 s | 34 | Pattern | It notices I eat at the uni restaurant most weekdays at noon, and proposes one card. I accept. Nothing changes without my OK. |
 | 04 | 0:35 | 15 s | 34 | Talk | I can just talk to it. "Add Spotify to Gym." It's an agent: it edits my contexts, remembers what matters, and sets reminders. |
-| 05 | 0:50 | 18 s | 41 | Wardrobe | And it dresses up. Muse Image edits the companion itself, so outfits stack as layers. I pick its face, its colours, even the colour of its ukulele. |
-| 06 | 1:08 | 17 s | 39 | Alive | It lives on its own: music on, it nods along. Real rain outside, out comes the umbrella. After midnight, it gets sleepy. Charging? A little spark. |
+| 05 | 0:50 | 18 s | 41 | Wardrobe | And it dresses up. Muse Image edits the companion itself, so outfits stack as layers. I pick its face and its colours. |
+| 06 | 1:08 | 17 s | 39 | Alive | It lives on its own: music on, it nods along. Real rain outside, out comes the umbrella. After midnight, it gets sleepy. |
 | 07 | 1:25 | 17 s | 39 | Style | Make it yours: a clock font separate from the app font, and a carousel of living effects. Neon, fireworks, sakura, code rain. |
 | 08 | 1:42 | 13 s | 29 | Themes | Save the whole look as a theme, tie it to a context, and share it with a friend as a code. |
 | 09 | 1:55 | 15 s | 34 | Focus | At the library, distracting apps step aside. If I really want YouTube, I wait ten seconds. Notifications are held, then summed up after. |

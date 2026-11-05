@@ -1,7 +1,7 @@
 {
-  "consecutiveFailures": 2,
-  "lifetimeTrips": 0,
+  "consecutiveFailures": 1,
+  "lifetimeTrips": 1,
   "lastFailedTool": "Bash",
-  "lastFailureTime": "2026-11-04T15:07:48Z",
-  "lastError": "Exit code 1\nTraceback (most recent call last):\n  File \"<string>\", line 4, in <module>\n  File \"<string>\", line 4, in <listcomp>\n  File \"/private/tmp/claude-501/-Users-tugdual-Documents-meta-hackaton/91"
+  "lastFailureTime": "2026-11-04T17:29:24Z",
+  "lastError": "Exit code 1\nadb: device '4fcb82d' not found"
 }
