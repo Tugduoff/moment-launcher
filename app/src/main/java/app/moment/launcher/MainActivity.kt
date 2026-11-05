@@ -129,6 +129,10 @@ class MainActivity : ComponentActivity() {
                 "effect" -> arg.toIntOrNull()?.let { vm.setStyle(app.moment.launcher.ui.Style.current.copy(effect = it)) }
                 "style" -> vm.openStyle(arg != "0")
                 "brief" -> vm.briefNow(arg == "pm")
+                "samples" -> vm.setDemoContexts(arg != "0")
+                "music" -> { vm.demoMusic = arg == "1"; vm.recompute() }
+                "held" -> vm.demoHeldSummary()
+                "widgets" -> vm.openWidgetPicker(arg != "0")
             }
         }
     }

@@ -1,31 +1,25 @@
-# Voice-over script (3:00 film)
+# Voice-over script (3:00 film, 13 scenes)
 
-Read at a calm pace. Each line has to fit inside its scene; the start time is when the scene begins.
-Record **one file per scene** (`vo/01.m4a` … `vo/17.m4a`, any of m4a/wav/mp3) so retakes are easy: `scripts/mix_voice.sh` places each file at its scene's start and ducks the music under your voice.
-Leave ~0.3 s of silence at the start of each file.
-
-| # | Starts | Scene | Line |
-|---|---|---|---|
-| 01 | 0:00 | Thirty icons (8 s) | My home screen looks the same at lunch, in the car, and at one in the morning. Thirty icons, every time. |
-| 02 | 0:08 | Meet Moment (7 s) | So I built Moment: a home screen that shows what this moment needs, and hides the rest. |
-| 03 | 0:15 | It sleeps (9 s) | Most of the time, it's just a clock, a few rows, and this little companion, asleep. |
-| 04 | 0:24 | An idea (14 s) | But it notices patterns. I eat at the uni restaurant most weekdays at noon, so it wakes up with an idea. Muse Spark turns it into one card, and nothing changes without my OK. |
-| 05 | 0:38 | Dressed by Muse (13 s) | I accept. Now I get Pay with Izly and directions, one tap each. And Muse Image dresses the companion for the place: a chef's hat. |
-| 06 | 0:51 | Library focus (12 s) | At the library, it hides YouTube and the noisy apps. If I really want one, I wait ten seconds first. |
-| 07 | 1:03 | In the car (9 s) | When the car's Bluetooth connects: three big buttons. Nothing else. |
-| 08 | 1:12 | Late night (9 s) | Late at night, away from home: a ride home, share my location, call a friend. |
-| 09 | 1:21 | Rain and games (10 s) | When it actually rains in Paris, it goes cozy. Headphones in? Game mode, and it nods along. |
-| 10 | 1:31 | Just say it (18 s) | Or I just tell it: "I go to the gym Tuesday and Thursday evenings, and I play guitar." The Muse Spark agent checks my time, contexts and apps with real tool calls, and stages two contexts for me to approve. |
-| 11 | 1:49 | Snap a timetable (14 s) | New semester? I snap my timetable. Muse Spark reads the photo and proposes my whole week. I tick what I want, and add all. |
-| 12 | 2:03 | The wardrobe (14 s) | And yes, it gets dressed. "Put on a red cowboy hat." "Now play the guitar." Accessories stack, and the wardrobe keeps them. |
-| 13 | 2:17 | Postcards (10 s) | Then Muse Image paints a postcard of us, ready to share. |
-| 14 | 2:27 | A living rig (10 s) | It's not a GIF. Muse Image drew the body once; the phone draws the face live, sixty times a second, so every outfit still blinks and talks. |
-| 15 | 2:37 | Rules, then Muse (10 s) | Rules on the phone decide when. Muse decides what. Only labels leave the phone, never my location or history. |
-| 16 | 2:47 | Built on Muse (8 s) | Three Muse models, Spark, Image and Voice Transcribe, doing six jobs. |
-| 17 | 2:55 | Try Moment (5 s) | That's Moment. Built solo, open source. Thanks! |
-
-Then: export the MP4 from the Motion page (Export button) and run
+Record **one file per scene**: `vo/01.m4a` … `vo/13.m4a` (m4a, wav or mp3 all work). Leave about 0.3 s of silence at the start of each. Then export the MP4 from the Motion page and run:
 
 ```bash
 scripts/mix_voice.sh moment_film.mp4 vo/ moment_final.mp4
 ```
+
+It places each file at its scene's start and lowers the music under your voice. Word budgets assume about 2.3 words per second.
+
+| # | Starts | Length | Max words | Scene | Suggested line |
+|---|---|---|---|---|---|
+| 01 | 0:00 | 10 s | 23 | Problem | My home screen looks the same at lunch, in the car, and at one in the morning. Thirty icons, every time. |
+| 02 | 0:10 | 10 s | 23 | Meet Moment | So I built Moment: a clock, a few rows, and a little companion that sleeps until it's needed. |
+| 03 | 0:20 | 15 s | 34 | Pattern | It notices I eat at the uni restaurant most weekdays at noon, and proposes one card. I accept. Nothing changes without my OK. |
+| 04 | 0:35 | 15 s | 34 | Talk | I can just talk to it. "Add Spotify to Gym." It's an agent: it edits my contexts, remembers what matters, and sets reminders. |
+| 05 | 0:50 | 18 s | 41 | Wardrobe | And it dresses up. Muse Image edits the companion itself, so outfits stack as layers. I pick its face, its colours, even the colour of its ukulele. |
+| 06 | 1:08 | 17 s | 39 | Alive | It lives on its own: music on, it nods along. Real rain outside, out comes the umbrella. After midnight, it gets sleepy. Charging? A little spark. |
+| 07 | 1:25 | 17 s | 39 | Style | Make it yours: a clock font separate from the app font, and a carousel of living effects. Neon, fireworks, sakura, code rain. |
+| 08 | 1:42 | 13 s | 29 | Themes | Save the whole look as a theme, tie it to a context, and share it with a friend as a code. |
+| 09 | 1:55 | 15 s | 34 | Focus | At the library, distracting apps step aside. If I really want YouTube, I wait ten seconds. Notifications are held, then summed up after. |
+| 10 | 2:10 | 12 s | 27 | Briefings | Every morning, the weather and my first meetings. Every evening, my steps and what's tomorrow. |
+| 11 | 2:22 | 13 s | 29 | Basics | It's a real launcher: widgets per context, swipe down, swipe up, double-tap to lock, and the best match right above my thumb. |
+| 12 | 2:35 | 15 s | 34 | Privacy | Rules on the phone decide when. Muse decides what. Only short labels ever reach the model, never my location or history. |
+| 13 | 2:50 | 10 s | 23 | Outro | Moment. What this moment needs. Built solo with Muse Spark, Muse Image and Muse Voice. |

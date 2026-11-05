@@ -268,7 +268,7 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         worn.filter { layerImage(it) == null }.forEach { prefetch(it) }
         bodyMoments(s)
         val hourNow = s.minuteOfDay / 60
-        val music = runCatching { (getApplication<Application>().getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager).isMusicActive }.getOrDefault(false)
+        val music = demoMusic || runCatching { (getApplication<Application>().getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager).isMusicActive }.getOrDefault(false)
         val vibe = when {
             music -> "music"
             s.raining -> "rain"
@@ -1095,6 +1095,13 @@ class MomentViewModel(app: Application) : AndroidViewModel(app) {
         Skin.current = skin
         if (!editThemeOfContext { it.copy(skin = skin.encode()) }) uiPrefs.edit().putString("skin", skin.encode()).apply()
         _ui.update { it.copy(hop = it.hop + 1) }
+    }
+
+    /** Demo hooks for the video: music "playing", and a focus summary with sample held notifications. */
+    var demoMusic = false
+    fun demoHeldSummary() = _ui.update {
+        it.copy(brief = Brief("While you focused", "I held these back. All still in the apps.",
+            listOf("Instagram · 3 messages", "YouTube · 2 new videos", "WhatsApp · Léa: dinner at 8?"), false))
     }
 
     fun setDemoContexts(on: Boolean) {

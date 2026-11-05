@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Lays one voice file per scene (vo/01.* … vo/17.*) over the exported film, at each scene's start,
+# Lays one voice file per scene (vo/01.* … vo/13.*) over the exported film, at each scene's start,
 # and ducks the film's music under the voice. Usage: scripts/mix_voice.sh film.mp4 vo/ out.mp4 [ffmpeg]
 set -euo pipefail
 FILM=$1; VO=$2; OUT=$3; FF=${4:-ffmpeg}
-STARTS=(0 8 15 24 38 51 63 72 81 91 109 123 137 147 157 167 175)
+STARTS=(0 10 20 35 50 68 85 102 115 130 142 155 170)
 inputs=(-i "$FILM"); filters=""; mix=""; n=0
-for i in $(seq 1 17); do
+for i in $(seq 1 13); do
   f=$(ls "$VO"/$(printf %02d $i).* 2>/dev/null | head -1 || true)
   [ -z "$f" ] && continue
   n=$((n+1)); inputs+=(-i "$f")
